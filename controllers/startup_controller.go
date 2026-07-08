@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 
 	"github.com/lnb/HRPAuth-Backend-Go/config"
+	"github.com/lnb/HRPAuth-Backend-Go/utils"
 
 	"gopkg.in/yaml.v3"
 )
@@ -87,6 +88,9 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 			"encryption": "tls",
 			"from_email": "no-reply@samuelcheston.com",
 			"from_name":  "HRPAuth",
+		},
+		"manage": map[string]interface{}{
+			"token": sc.generateManageToken(),
 		},
 		"security": map[string]interface{}{
 			"password_cost":           10,
@@ -314,6 +318,13 @@ func (sc *StartupController) generatePseudoKeys(publicKeyPath, privateKeyPath st
 	}
 
 	return nil
+}
+
+// generateManageToken produces a random 32-byte (64 hex chars) Manage Token.
+// It is generated once at config-file creation time and persisted to
+// config.yaml under `manage.token`.
+func (sc *StartupController) generateManageToken() string {
+	return utils.GenerateRandomToken(32)
 }
 
 func (sc *StartupController) generateRandomString(length int) string {

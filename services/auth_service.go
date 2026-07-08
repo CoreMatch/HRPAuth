@@ -422,3 +422,35 @@ func (as *AuthService) GetProfileByName(name string) *models.Profile {
 	}
 	return &profile
 }
+
+// ResolveToken attempts to authenticate the given remtoken. It supports two
+// kinds of tokens:
+//   - The operator-level Manage Token (M-T) stored in config.AppConfig.Manage.Token.
+//     When matched, the request is treated as authenticated and the caller must
+//     identify the target user via uid/email where the endpoint requires one.
+//     The returned *models.User is nil and isManage is true.
+//   - A regular user's remember_token. When matched, the user is returned and
+//     isManage is false.
+//
+// If neither matches, (nil, false) is returned and the request is unauthorized.
+func (as *AuthService) ResolveToken(token string) (*models.User, bool) {
+	if token == "" {
+		return nil, false
+	}
+
+	if config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token {
+		return nil, true
+	}
+
+	var user models.User
+	if err := database.DB.Where("remember_token = ?", token).First(&user).Error; err != nil {
+		return nil, false
+	}
+	return &user, false
+}
+
+// IsManageToken reports whether the given token equals the operator-level
+// Manage Token (M-T) from config.
+func (as *AuthService) IsManageToken(token string) bool {
+	return token != "" && config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+}

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
@@ -25,6 +26,8 @@ func NewTextureController() *TextureController {
 
 type UploadTextureRequest struct {
 	RememberToken string `json:"remember_token"`
+	UID           string `json:"uid"`
+	Email         string `json:"email"`
 	ProfileID     string `json:"profile_id"`
 	TextureType   string `json:"texture_type"`
 	Model         string `json:"model"`
@@ -35,6 +38,8 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 	profileID := ""
 	textureType := ""
 	model := ""
+	uid := ""
+	email := ""
 
 	contentType := c.ContentType()
 	if strings.Contains(contentType, "application/json") {
@@ -44,6 +49,8 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 			profileID = req.ProfileID
 			textureType = req.TextureType
 			model = req.Model
+			uid = req.UID
+			email = req.Email
 		}
 	}
 
@@ -59,6 +66,12 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 	if model == "" {
 		model = c.PostForm("model")
 	}
+	if uid == "" {
+		uid = c.PostForm("uid")
+	}
+	if email == "" {
+		email = c.PostForm("email")
+	}
 
 	if token == "" {
 		token = c.Query("remember_token")
@@ -72,6 +85,12 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 	if model == "" {
 		model = c.Query("model")
 	}
+	if uid == "" {
+		uid = c.Query("uid")
+	}
+	if email == "" {
+		email = c.Query("email")
+	}
 
 	if token == "" {
 		c.JSON(http.StatusOK, gin.H{
@@ -81,20 +100,40 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 		return
 	}
 
-	var user models.User
-	result := database.DB.Where("remember_token = ?", token).First(&user)
-	if result.Error != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户不存在或token无效",
-		})
-		return
-	}
-
 	if textureType != "skin" && textureType != "cape" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "无效的材质类型，只能是 skin 或 cape",
+		})
+		return
+	}
+
+	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	if isManage && uid == "" && email == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "Manage Token 需要指定 uid 或 email",
+		})
+		return
+	}
+
+	query := database.DB.Model(&models.User{})
+	if !isManage {
+		query = query.Where("remember_token = ?", token)
+	}
+	if uid != "" {
+		query = query.Where("uid = ?", uid)
+	}
+	if email != "" {
+		query = query.Where("email = ?", email)
+	}
+
+	var user models.User
+	result := query.First(&user)
+	if result.Error != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "用户不存在或token无效",
 		})
 		return
 	}
@@ -167,6 +206,8 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 
 type DeleteTextureRequest struct {
 	RememberToken string `json:"remember_token"`
+	UID           string `json:"uid"`
+	Email         string `json:"email"`
 	ProfileID     string `json:"profile_id"`
 	TextureType   string `json:"texture_type"`
 }
@@ -175,6 +216,8 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 	token := ""
 	profileID := ""
 	textureType := ""
+	uid := ""
+	email := ""
 
 	contentType := c.ContentType()
 	if strings.Contains(contentType, "application/json") {
@@ -183,6 +226,8 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 			token = req.RememberToken
 			profileID = req.ProfileID
 			textureType = req.TextureType
+			uid = req.UID
+			email = req.Email
 		}
 	}
 
@@ -195,6 +240,12 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 	if textureType == "" {
 		textureType = c.PostForm("texture_type")
 	}
+	if uid == "" {
+		uid = c.PostForm("uid")
+	}
+	if email == "" {
+		email = c.PostForm("email")
+	}
 
 	if token == "" {
 		token = c.Query("remember_token")
@@ -205,6 +256,12 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 	if textureType == "" {
 		textureType = c.Query("texture_type")
 	}
+	if uid == "" {
+		uid = c.Query("uid")
+	}
+	if email == "" {
+		email = c.Query("email")
+	}
 
 	if token == "" {
 		c.JSON(http.StatusOK, gin.H{
@@ -214,20 +271,40 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 		return
 	}
 
-	var user models.User
-	result := database.DB.Where("remember_token = ?", token).First(&user)
-	if result.Error != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户不存在或token无效",
-		})
-		return
-	}
-
 	if textureType != "skin" && textureType != "cape" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
 			"message": "无效的材质类型，只能是 skin 或 cape",
+		})
+		return
+	}
+
+	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	if isManage && uid == "" && email == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "Manage Token 需要指定 uid 或 email",
+		})
+		return
+	}
+
+	query := database.DB.Model(&models.User{})
+	if !isManage {
+		query = query.Where("remember_token = ?", token)
+	}
+	if uid != "" {
+		query = query.Where("uid = ?", uid)
+	}
+	if email != "" {
+		query = query.Where("email = ?", email)
+	}
+
+	var user models.User
+	result := query.First(&user)
+	if result.Error != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "用户不存在或token无效",
 		})
 		return
 	}
@@ -272,6 +349,8 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 
 type GetTextureRequest struct {
 	RememberToken string `json:"remember_token"`
+	UID           string `json:"uid"`
+	Email         string `json:"email"`
 	ProfileID     string `json:"profile_id"`
 }
 
@@ -284,6 +363,8 @@ type TextureResponse struct {
 func (tc *TextureController) GetTexture(c *gin.Context) {
 	token := ""
 	profileID := ""
+	uid := ""
+	email := ""
 
 	contentType := c.ContentType()
 	if strings.Contains(contentType, "application/json") {
@@ -291,6 +372,8 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 		if err := c.ShouldBindJSON(&req); err == nil {
 			token = req.RememberToken
 			profileID = req.ProfileID
+			uid = req.UID
+			email = req.Email
 		}
 	}
 
@@ -300,12 +383,24 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 	if profileID == "" {
 		profileID = c.PostForm("profile_id")
 	}
+	if uid == "" {
+		uid = c.PostForm("uid")
+	}
+	if email == "" {
+		email = c.PostForm("email")
+	}
 
 	if token == "" {
 		token = c.Query("remember_token")
 	}
 	if profileID == "" {
 		profileID = c.Query("profile_id")
+	}
+	if uid == "" {
+		uid = c.Query("uid")
+	}
+	if email == "" {
+		email = c.Query("email")
 	}
 
 	if token == "" {
@@ -316,8 +411,28 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 		return
 	}
 
+	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	if isManage && uid == "" && email == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "Manage Token 需要指定 uid 或 email",
+		})
+		return
+	}
+
+	query := database.DB.Model(&models.User{})
+	if !isManage {
+		query = query.Where("remember_token = ?", token)
+	}
+	if uid != "" {
+		query = query.Where("uid = ?", uid)
+	}
+	if email != "" {
+		query = query.Where("email = ?", email)
+	}
+
 	var user models.User
-	result := database.DB.Where("remember_token = ?", token).First(&user)
+	result := query.First(&user)
 	if result.Error != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,

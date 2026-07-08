@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/utils"
@@ -71,8 +72,17 @@ func (tc *TOTPController) SetupTOTP(c *gin.Context) {
 		return
 	}
 
+	// M-T is treated as a remtoken: when it matches, the remember_token check
+	// is skipped so the operator can configure TOTP for any user by email.
+	isManage := config.AppConfig.Manage.Token != "" && remToken == config.AppConfig.Manage.Token
+
+	query := database.DB.Where("email = ?", email)
+	if !isManage {
+		query = query.Where("remember_token = ?", remToken)
+	}
+
 	var user models.User
-	result := database.DB.Where("email = ? AND remember_token = ?", email, remToken).First(&user)
+	result := query.First(&user)
 	if result.Error != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,
@@ -182,8 +192,17 @@ func (tc *TOTPController) HasBeenEnabled(c *gin.Context) {
 		return
 	}
 
+	// M-T is treated as a remtoken: when it matches, the remember_token check
+	// is skipped so the operator can query any user by uid.
+	isManage := config.AppConfig.Manage.Token != "" && rt == config.AppConfig.Manage.Token
+
+	query := database.DB.Where("uid = ?", uid)
+	if !isManage {
+		query = query.Where("remember_token = ?", rt)
+	}
+
 	var user models.User
-	result := database.DB.Where("uid = ? AND remember_token = ?", uid, rt).First(&user)
+	result := query.First(&user)
 	if result.Error != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{
 			"success": false,

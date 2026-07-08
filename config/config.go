@@ -20,6 +20,7 @@ type Config struct {
 	VerificationCode VerificationCodeConfig
 	Redis            RedisConfig
 	SMTP             SMTPConfig
+	Manage           ManageConfig
 	Yggdrasil        YggdrasilConfig
 }
 
@@ -75,6 +76,13 @@ type SMTPConfig struct {
 	Encryption string
 	FromEmail  string
 	FromName   string
+}
+
+// ManageConfig holds the operator-level "Manage Token" (M-T) which is treated
+// as a remtoken (remember_token) by every site endpoint that accepts one.
+// Generated randomly on first startup and persisted in config.yaml.
+type ManageConfig struct {
+	Token string
 }
 
 type YggdrasilConfig struct {
@@ -172,6 +180,7 @@ func Load() {
 		VerificationCode: parseVerificationCodeConfig(yamlConfig),
 		Redis:            parseRedisConfig(yamlConfig),
 		SMTP:             parseSMTPConfig(yamlConfig),
+		Manage:           parseManageConfig(yamlConfig),
 		Yggdrasil:        parseYggdrasilConfig(yamlConfig),
 	}
 
@@ -256,6 +265,13 @@ func parseSMTPConfig(config map[string]interface{}) SMTPConfig {
 		Encryption: getString(smtp, "encryption"),
 		FromEmail:  getString(smtp, "from_email"),
 		FromName:   getString(smtp, "from_name"),
+	}
+}
+
+func parseManageConfig(config map[string]interface{}) ManageConfig {
+	manage, _ := config["manage"].(map[string]interface{})
+	return ManageConfig{
+		Token: getString(manage, "token"),
 	}
 }
 

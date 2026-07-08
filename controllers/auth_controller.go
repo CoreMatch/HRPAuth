@@ -250,6 +250,9 @@ func (ac *AuthController) Logout(c *gin.Context) {
 	}
 
 	if token != "" {
+		// The Manage Token (M-T) lives in config and is not stored in the DB,
+		// so the update below is a no-op for it. For a real remember_token
+		// the row is matched and cleared.
 		database.DB.Model(&models.User{}).
 			Where("remember_token = ?", token).
 			Update("remember_token", nil)

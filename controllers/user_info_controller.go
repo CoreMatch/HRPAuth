@@ -4,6 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 )
@@ -61,7 +62,23 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 		return
 	}
 
-	query := database.DB.Model(&models.User{}).Where("remember_token = ?", token)
+	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+
+	// M-T acts as a master remtoken: the target user must be identified by
+	// uid or email since M-T itself is not stored on any user row.
+	if isManage && uid == "" && email == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "Manage Token 需要指定 uid 或 email",
+			"data":    nil,
+		})
+		return
+	}
+
+	query := database.DB.Model(&models.User{})
+	if !isManage {
+		query = query.Where("remember_token = ?", token)
+	}
 
 	if uid != "" {
 		query = query.Where("uid = ?", uid)

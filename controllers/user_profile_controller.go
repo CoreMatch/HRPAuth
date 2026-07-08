@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
@@ -19,11 +20,15 @@ func NewUserProfileController() *UserProfileController {
 
 type ChangeUsernameRequest struct {
 	RememberToken string `json:"remember_token"`
+	UID           string `json:"uid"`
+	Email         string `json:"email"`
 	Username      string `json:"username"`
 }
 
 type ChangeProfileNameRequest struct {
 	RememberToken string `json:"remember_token"`
+	UID           string `json:"uid"`
+	Email         string `json:"email"`
 	ProfileID     string `json:"profile_id"`
 	Name          string `json:"name"`
 }
@@ -32,10 +37,14 @@ func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
 	var req ChangeUsernameRequest
 	token := ""
 	newUsername := ""
+	uid := ""
+	email := ""
 
 	if err := c.ShouldBindJSON(&req); err == nil {
 		token = req.RememberToken
 		newUsername = req.Username
+		uid = req.UID
+		email = req.Email
 	}
 
 	if token == "" {
@@ -44,12 +53,24 @@ func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
 	if newUsername == "" {
 		newUsername = c.PostForm("username")
 	}
+	if uid == "" {
+		uid = c.PostForm("uid")
+	}
+	if email == "" {
+		email = c.PostForm("email")
+	}
 
 	if token == "" {
 		token = c.Query("remember_token")
 	}
 	if newUsername == "" {
 		newUsername = c.Query("username")
+	}
+	if uid == "" {
+		uid = c.Query("uid")
+	}
+	if email == "" {
+		email = c.Query("email")
 	}
 
 	if token == "" {
@@ -85,8 +106,28 @@ func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
 		return
 	}
 
+	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	if isManage && uid == "" && email == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "Manage Token 需要指定 uid 或 email",
+		})
+		return
+	}
+
+	query := database.DB.Model(&models.User{})
+	if !isManage {
+		query = query.Where("remember_token = ?", token)
+	}
+	if uid != "" {
+		query = query.Where("uid = ?", uid)
+	}
+	if email != "" {
+		query = query.Where("email = ?", email)
+	}
+
 	var user models.User
-	result := database.DB.Where("remember_token = ?", token).First(&user)
+	result := query.First(&user)
 	if result.Error != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -119,11 +160,15 @@ func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 	token := ""
 	profileID := ""
 	newName := ""
+	uid := ""
+	email := ""
 
 	if err := c.ShouldBindJSON(&req); err == nil {
 		token = req.RememberToken
 		profileID = req.ProfileID
 		newName = req.Name
+		uid = req.UID
+		email = req.Email
 	}
 
 	if token == "" {
@@ -135,6 +180,12 @@ func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 	if newName == "" {
 		newName = c.PostForm("name")
 	}
+	if uid == "" {
+		uid = c.PostForm("uid")
+	}
+	if email == "" {
+		email = c.PostForm("email")
+	}
 
 	if token == "" {
 		token = c.Query("remember_token")
@@ -144,6 +195,12 @@ func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 	}
 	if newName == "" {
 		newName = c.Query("name")
+	}
+	if uid == "" {
+		uid = c.Query("uid")
+	}
+	if email == "" {
+		email = c.Query("email")
 	}
 
 	if token == "" {
@@ -180,8 +237,28 @@ func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 		return
 	}
 
+	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	if isManage && uid == "" && email == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "Manage Token 需要指定 uid 或 email",
+		})
+		return
+	}
+
+	query := database.DB.Model(&models.User{})
+	if !isManage {
+		query = query.Where("remember_token = ?", token)
+	}
+	if uid != "" {
+		query = query.Where("uid = ?", uid)
+	}
+	if email != "" {
+		query = query.Where("email = ?", email)
+	}
+
 	var user models.User
-	result := database.DB.Where("remember_token = ?", token).First(&user)
+	result := query.First(&user)
 	if result.Error != nil {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
