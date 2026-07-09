@@ -303,6 +303,14 @@ func (ac *AuthController) Register(c *gin.Context) {
 // mojang_uuid / cbh for /register.
 func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, hash, mojangUUID, ip string, now time.Time) {
 	authService := services.NewAuthService()
+	// Per references/HA-ROADMAP.md §4.1: passively trigger cleanup on every
+	// successful M.T. /register. Serialization is handled inside the service.
+	cleanupTriggered := false
+	defer func() {
+		if cleanupTriggered {
+			go authService.CleanupInactiveBotUsers()
+		}
+	}()
 
 	// Step 1: lookup by mojang_uuid (§3.4.1).
 	if mojangUUID != "" {
@@ -317,6 +325,7 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 				})
 				return
 			}
+			cleanupTriggered = true
 			c.JSON(http.StatusOK, gin.H{
 				"success":    true,
 				"uid":        byMojang.UID,
@@ -342,6 +351,7 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 		if byUsername.MojangUUID != nil && *byUsername.MojangUUID == mojangUUID {
 			// 2.b idempotent.
 			profile, _ := authService.GetOrCreateProfileForUser(byUsername.UUID, byUsername.Username)
+			cleanupTriggered = true
 			c.JSON(http.StatusOK, gin.H{
 				"success":    true,
 				"uid":        byUsername.UID,
@@ -381,6 +391,7 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 			return
 		}
 		profile, _ := authService.GetOrCreateProfileForUser(byUsername.UUID, byUsername.Username)
+		cleanupTriggered = true
 		c.JSON(http.StatusOK, gin.H{
 			"success":    true,
 			"uid":        byUsername.UID,
@@ -446,6 +457,7 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 		// Per §3.5: cbh is only surfaced in the response when 0.
 		resp["cbh"] = 0
 	}
+	cleanupTriggered = true
 	c.JSON(http.StatusOK, resp)
 }
 

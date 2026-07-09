@@ -3,7 +3,9 @@ package services
 import (
 	"context"
 	"fmt"
+	"log"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/lnb/HRPAuth-Backend-Go/config"
@@ -14,6 +16,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
+
+// botUserCleanupMu serializes CleanupInactiveBotUsers across all AuthService
+// instances so the 24h loop and per-request M.T. triggers don't race.
+var botUserCleanupMu sync.Mutex
 
 type AuthService struct{}
 
@@ -120,6 +126,86 @@ func (as *AuthService) GetOrCreateProfileForUser(userUUID, profileName string) (
 		return &profile, nil
 	}
 	return as.CreateDefaultProfileForUser(userUUID, profileName)
+}
+
+// CleanupInactiveBotUsers removes users that were auto-registered by WinnerProxy
+// (cbh = 0) and have been inactive for 30+ days (both register_at and
+// last_sign_at older than the cutoff). Implements references/HA-ROADMAP.md §4.
+//
+// Returns the number of users successfully deleted. Returns 0 if another
+// cleanup is already running (serialized via botUserCleanupMu). Single-user
+// failures are logged and skipped without interrupting the rest.
+func (as *AuthService) CleanupInactiveBotUsers() int {
+	if !botUserCleanupMu.TryLock() {
+		return 0
+	}
+	defer botUserCleanupMu.Unlock()
+
+	cutoff := time.Now().Add(-30 * 24 * time.Hour)
+
+	var candidates []models.User
+	if err := database.DB.Where(
+		"cbh = ? AND register_at < ? AND last_sign_at < ?",
+		false, cutoff, cutoff,
+	).Find(&candidates).Error; err != nil {
+		log.Printf("[cleanup] failed to query candidates: %v", err)
+		return 0
+	}
+
+	deleted := 0
+	for _, u := range candidates {
+		if err := as.deleteUserCascade(u); err != nil {
+			log.Printf("[cleanup] ERROR deleting uid=%d username=%s: %v", u.UID, u.Username, err)
+			continue
+		}
+		deleted++
+		log.Printf("[cleanup] - uid=%d username=%s (created %s, last_seen %s)",
+			u.UID, u.Username, formatCleanupDate(u.RegisterAt), formatCleanupDate(u.LastSignAt),
+		)
+	}
+	if len(candidates) > 0 {
+		log.Printf("[cleanup] scanned %d users, deleted %d", len(candidates), deleted)
+	}
+	return deleted
+}
+
+// deleteUserCascade removes a user and all dependent rows in dependency order.
+// sessions/profile_properties are deleted before profiles because they hold
+// profile_id FKs. tokens are deleted by user_id.
+func (as *AuthService) deleteUserCascade(u models.User) error {
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		// Collect profile IDs first; needed for sessions + profile_properties.
+		var profileIDs []string
+		if err := tx.Model(&models.Profile{}).
+			Where("user_id = ?", u.UUID).
+			Pluck("id", &profileIDs).Error; err != nil {
+			return err
+		}
+
+		if len(profileIDs) > 0 {
+			if err := tx.Where("profile_id IN ?", profileIDs).Delete(&models.Session{}).Error; err != nil {
+				return err
+			}
+			if err := tx.Where("profile_id IN ?", profileIDs).Delete(&models.ProfileProperty{}).Error; err != nil {
+				return err
+			}
+		}
+
+		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.Profile{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.Token{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(&u).Error
+	})
+}
+
+func formatCleanupDate(t *time.Time) string {
+	if t == nil {
+		return "nil"
+	}
+	return t.Format("2006-01-02")
 }
 
 func (as *AuthService) RenameProfile(userUUID, profileID, newName string) (*models.Profile, error) {
