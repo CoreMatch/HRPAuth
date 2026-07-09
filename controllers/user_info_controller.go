@@ -112,3 +112,97 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 		"data":    userData,
 	})
 }
+
+// EnableMojangBind sets users.mbe = 1 so that a M.T. /register from a Mojang
+// player colliding on this username will bind (instead of returning 409).
+//
+// The user opts in themselves (via their remember_token) or an operator
+// enables it on a target user via the M-T path (which requires uid or email).
+// Idempotent: calling when mbe is already 1 is a no-op success.
+//
+// After a successful bind (users.mojang_uuid is set) this field becomes
+// irrelevant and is left untouched.
+func (uc *UserInfoController) EnableMojangBind(c *gin.Context) {
+	var req GetUserRequest
+	token := ""
+	uid := ""
+	email := ""
+
+	if err := c.ShouldBindJSON(&req); err == nil {
+		token = req.RememberToken
+		uid = req.UID
+		email = req.Email
+	}
+	if token == "" {
+		token = c.PostForm("remember_token")
+	}
+	if uid == "" {
+		uid = c.PostForm("uid")
+	}
+	if email == "" {
+		email = c.PostForm("email")
+	}
+	if token == "" {
+		token = c.Query("remember_token")
+	}
+	if uid == "" {
+		uid = c.Query("uid")
+	}
+	if email == "" {
+		email = c.Query("email")
+	}
+
+	if token == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "未登录或登录已过期",
+		})
+		return
+	}
+
+	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	if isManage && uid == "" && email == "" {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "Manage Token 需要指定 uid 或 email",
+		})
+		return
+	}
+
+	query := database.DB.Model(&models.User{})
+	if !isManage {
+		query = query.Where("remember_token = ?", token)
+	}
+	if uid != "" {
+		query = query.Where("uid = ?", uid)
+	}
+	if email != "" {
+		query = query.Where("email = ?", email)
+	}
+
+	var user models.User
+	if err := query.First(&user).Error; err != nil {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "用户不存在或token无效",
+		})
+		return
+	}
+
+	if err := database.DB.Model(&user).Update("mbe", true).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to enable mojang bind",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Mojang bind enabled",
+		"data": gin.H{
+			"uid": user.UID,
+			"mbe": 1,
+		},
+	})
+}

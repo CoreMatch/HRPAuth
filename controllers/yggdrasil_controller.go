@@ -189,12 +189,6 @@ func (yc *YggdrasilController) Authenticate(c *gin.Context) {
 
 	if req.RequestUser {
 		userProperties := make([]gin.H, 0)
-		if user.Locale != "" {
-			userProperties = append(userProperties, gin.H{
-				"name":  "locale",
-				"value": user.Locale,
-			})
-		}
 
 		response["user"] = gin.H{
 			"id":         user.UUID,
@@ -262,12 +256,6 @@ func (yc *YggdrasilController) Refresh(c *gin.Context) {
 		user := yc.authService.GetUserByID(token.UserID)
 		if user != nil {
 			userProperties := make([]gin.H, 0)
-			if user.Locale != "" {
-				userProperties = append(userProperties, gin.H{
-					"name":  "locale",
-					"value": user.Locale,
-				})
-			}
 			response["user"] = gin.H{
 				"id":         user.UUID,
 				"email":      user.Email,

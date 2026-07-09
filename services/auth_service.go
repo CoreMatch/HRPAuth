@@ -26,7 +26,6 @@ type UserInfo struct {
 	Email    string
 	Username string
 	Password string
-	Locale   string
 }
 
 func (as *AuthService) VerifyCredentials(identifier, password string, allowUsernameLogin bool) *UserInfo {
@@ -60,7 +59,6 @@ func (as *AuthService) VerifyCredentials(identifier, password string, allowUsern
 		Email:    user.Email,
 		Username: user.Username,
 		Password: user.Password,
-		Locale:   user.Locale,
 	}
 }
 
@@ -111,6 +109,17 @@ func (as *AuthService) CreateDefaultProfileForUserTx(tx *gorm.DB, userUUID, prof
 
 func (as *AuthService) CreateDefaultProfileForUser(userUUID, profileName string) (*models.Profile, error) {
 	return as.CreateDefaultProfileForUserTx(database.DB, userUUID, profileName)
+}
+
+// GetOrCreateProfileForUser returns the existing profile for the given user, or
+// creates a new one if none exists. Used by the M.T. (WinnerProxy) /register path
+// where the same user may be looked up repeatedly across idempotent requests.
+func (as *AuthService) GetOrCreateProfileForUser(userUUID, profileName string) (*models.Profile, error) {
+	var profile models.Profile
+	if err := database.DB.Where("user_id = ?", userUUID).First(&profile).Error; err == nil {
+		return &profile, nil
+	}
+	return as.CreateDefaultProfileForUser(userUUID, profileName)
 }
 
 func (as *AuthService) RenameProfile(userUUID, profileID, newName string) (*models.Profile, error) {
@@ -410,7 +419,6 @@ func (as *AuthService) GetUserByID(userUUID string) *UserInfo {
 		UUID:     user.UUID,
 		Email:    user.Email,
 		Username: user.Username,
-		Locale:   user.Locale,
 	}
 }
 

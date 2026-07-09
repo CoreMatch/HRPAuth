@@ -5,33 +5,26 @@ import (
 )
 
 type User struct {
-	UID              uint      `gorm:"primaryKey;column:uid"`
-	UUID             string    `gorm:"type:varchar(32);column:uuid;index:idx_uuid"`
-	Email            string    `gorm:"type:varchar(255);column:email"`
-	Locale           string    `gorm:"type:varchar(255);column:locale"`
-	Score            int       `gorm:"column:score"`
-	Avatar           string    `gorm:"type:varchar(255);column:avatar"`
-	Password         string    `gorm:"type:varchar(255);not null;column:password"`
-	IP               string    `gorm:"type:varchar(255);column:ip"`
-	IsDarkMode       bool      `gorm:"type:tinyint(1);default:0;column:is_dark_mode"`
-	Permission       int       `gorm:"default:0;column:permission"`
-	LastSignAt       *time.Time `gorm:"column:last_sign_at"`
-	RegisterAt       *time.Time `gorm:"column:register_at"`
-	Verified         bool      `gorm:"type:tinyint(1);default:0;column:verified"`
-	RememberToken    string    `gorm:"type:varchar(100);column:remember_token"`
-	Username         string    `gorm:"type:varchar(255);column:username"`
-	LastLogin        int64     `gorm:"column:lastlogin"`
-	X                float64   `gorm:"default:0;column:x"`
-	Y                float64   `gorm:"default:0;column:y"`
-	Z                float64   `gorm:"default:0;column:z"`
-	World            string    `gorm:"type:varchar(255);default:'world';column:world"`
-	RegDate          int64     `gorm:"default:0;column:regdate"`
-	RegIP            string    `gorm:"type:varchar(40);column:regip"`
-	Yaw              float64   `gorm:"type:double(8,2);column:yaw"`
-	Pitch            float64   `gorm:"type:double(8,2);column:pitch"`
-	IsLogged         int16     `gorm:"default:0;column:isLogged"`
-	HasSession       int16     `gorm:"default:0;column:hasSession"`
-	TOTP             string    `gorm:"type:varchar(32);column:totp"`
+	UID           uint       `gorm:"primaryKey;column:uid"`
+	UUID          string     `gorm:"type:varchar(32);column:uuid;index:idx_uuid"`
+	Email         string     `gorm:"type:varchar(255);column:email"`
+	Avatar        string     `gorm:"type:varchar(255);column:avatar"`
+	Password      string     `gorm:"type:varchar(255);not null;column:password"`
+	IP            string     `gorm:"type:varchar(255);column:ip"`
+	Permission    int        `gorm:"default:0;column:permission"`
+	LastSignAt    *time.Time `gorm:"column:last_sign_at"`
+	RegisterAt    *time.Time `gorm:"column:register_at"`
+	Verified      bool       `gorm:"type:tinyint(1);default:0;column:verified"`
+	RememberToken string     `gorm:"type:varchar(100);column:remember_token"`
+	Username      string     `gorm:"type:varchar(255);column:username"`
+	RegIP         string     `gorm:"type:varchar(40);column:regip"`
+	TOTP          string     `gorm:"type:varchar(32);column:totp"`
+	CBH           bool       `gorm:"type:tinyint(1);not null;default:1;column:cbh"`
+	// MBE (Mojang Bind Enabled): when 1, an unbound WebUI user accepts a
+	// M.T. /register bind that supplies a mojang_uuid (see Register §3.4 2.a).
+	// When 0 (default), colliding Mojang players get 409 (HA priority).
+	MBE        bool    `gorm:"type:tinyint(1);not null;default:0;column:mbe"`
+	MojangUUID *string `gorm:"type:varchar(32);column:mojang_uuid;uniqueIndex:uk_users_mojang_uuid"`
 }
 
 func (User) TableName() string {
