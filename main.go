@@ -46,6 +46,9 @@ func main() {
 	botCleanupCtrl := controllers.NewBotUserCleanupController()
 	botCleanupCtrl.Start(24 * time.Hour)
 
+	sessionCleanupCtrl := controllers.NewSessionCleanupController()
+	sessionCleanupCtrl.Start(24 * time.Hour)
+
 	r := gin.Default()
 
 	r.Use(CORSMiddleware())

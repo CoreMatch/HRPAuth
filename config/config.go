@@ -372,9 +372,13 @@ func parseYggdrasilSecurityConfig(yggdrasilConfig map[string]interface{}) Yggdra
 	if maxTextureHeight == 0 {
 		maxTextureHeight = 1024
 	}
+	sessionExpirySeconds := getInt(security, "session_expiry_seconds")
+	if sessionExpirySeconds == 0 {
+		sessionExpirySeconds = 28800
+	}
 	return YggdrasilSecurityConfig{
 		TokenExpiryDays:      getInt(security, "token_expiry_days"),
-		SessionExpirySeconds: getInt(security, "session_expiry_seconds"),
+		SessionExpirySeconds: sessionExpirySeconds,
 		MaxTextureWidth:      maxTextureWidth,
 		MaxTextureHeight:     maxTextureHeight,
 	}

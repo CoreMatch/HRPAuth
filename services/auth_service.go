@@ -471,6 +471,15 @@ func (as *AuthService) GetSessionByProfileAndServer(profileName, serverID string
 	return &session
 }
 
+func (as *AuthService) CleanupExpiredSessions() int64 {
+	result := database.DB.Where("expires_at < ?", time.Now().Add(-24*time.Hour)).
+		Delete(&models.Session{})
+	if result.Error != nil {
+		return 0
+	}
+	return result.RowsAffected
+}
+
 func (as *AuthService) IsLoginRateLimited(identifier string) bool {
 	cfg := config.AppConfig.Security
 	key := fmt.Sprintf("%slogin_attempts:%s", config.AppConfig.Redis.Prefix, identifier)

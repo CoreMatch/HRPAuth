@@ -115,7 +115,7 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 			},
 			"security": map[string]interface{}{
 				"token_expiry_days":      15,
-				"session_expiry_seconds": 30,
+				"session_expiry_seconds": 28800,
 				"max_texture_width":      1024,
 				"max_texture_height":     1024,
 			},
