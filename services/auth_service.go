@@ -429,14 +429,24 @@ func (as *AuthService) IsProfileOwnedByUser(profileID, userID string) bool {
 }
 
 func (as *AuthService) CreateSession(profileID, serverID, ip string) bool {
+	var existingSession models.Session
+	result := database.DB.
+		Where("profile_id = ? AND server_id = ?", profileID, serverID).
+		First(&existingSession)
+
+	if result.Error == nil {
+		existingSession.IP = ip
+		existingSession.ExpiresAt = time.Now().Add(time.Duration(config.AppConfig.Yggdrasil.Security.SessionExpirySeconds) * time.Second)
+		return database.DB.Save(&existingSession).Error == nil
+	}
+
 	session := models.Session{
 		ProfileID: profileID,
 		ServerID:  serverID,
 		IP:        ip,
 		ExpiresAt: time.Now().Add(time.Duration(config.AppConfig.Yggdrasil.Security.SessionExpirySeconds) * time.Second),
 	}
-	result := database.DB.Create(&session)
-	return result.Error == nil
+	return database.DB.Create(&session).Error == nil
 }
 
 func (as *AuthService) GetSessionByProfileAndServer(profileName, serverID string) *models.Session {
@@ -448,13 +458,16 @@ func (as *AuthService) GetSessionByProfileAndServer(profileName, serverID string
 
 	var session models.Session
 	result := database.DB.
-		Where("profile_id = ? AND server_id = ? AND expires_at > ?", profile.ID, serverID, time.Now()).
-		Order("created_at DESC").
+		Where("profile_id = ? AND server_id = ?", profile.ID, serverID).
 		First(&session)
 
 	if result.Error != nil {
 		return nil
 	}
+
+	session.ExpiresAt = time.Now().Add(time.Duration(config.AppConfig.Yggdrasil.Security.SessionExpirySeconds) * time.Second)
+	database.DB.Save(&session)
+
 	return &session
 }
 
