@@ -5,6 +5,7 @@ import (
 	"log"
 
 	"github.com/lnb/HRPAuth-Backend-Go/config"
+	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 )
@@ -20,6 +21,10 @@ func Init() {
 	DB, err = gorm.Open(mysql.Open(dsn), &gorm.Config{})
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	if err := DB.AutoMigrate(&models.Session{}); err != nil {
+		log.Printf("Warning: Failed to auto-migrate sessions table: %v", err)
 	}
 
 	log.Println("Database connection established")

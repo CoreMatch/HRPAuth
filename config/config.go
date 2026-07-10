@@ -135,6 +135,7 @@ type FeatureFlagsConfig struct {
 	EnableMojangAntiFeatures bool
 	EnableProfileKey         bool
 	UsernameCheck            bool
+	EnableIPCheck            bool
 }
 
 const ConfigFileName = "config.yaml"
@@ -393,6 +394,7 @@ func parseFeatureFlagsConfig(config map[string]interface{}) FeatureFlagsConfig {
 		EnableMojangAntiFeatures: getBool(featureFlags, "enable_mojang_anti_features"),
 		EnableProfileKey:         getBool(featureFlags, "enable_profile_key"),
 		UsernameCheck:            getBool(featureFlags, "username_check"),
+		EnableIPCheck:            getBool(featureFlags, "enable_ip_check"),
 	}
 }
 

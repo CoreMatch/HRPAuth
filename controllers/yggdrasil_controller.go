@@ -2,6 +2,7 @@ package controllers
 
 import (
 	"io"
+	"log"
 	"net/http"
 	"strings"
 
@@ -352,20 +353,25 @@ func (yc *YggdrasilController) HasJoined(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[HasJoined] username=%s, serverID=%s, ip=%s", username, serverID, ip)
+
 	profile := yc.authService.GetProfileByName(username)
 	if profile == nil {
-		c.JSON(http.StatusOK, gin.H{})
+		log.Printf("[HasJoined] profile not found for username=%s", username)
+		c.Status(http.StatusNoContent)
 		return
 	}
 
 	session := yc.authService.GetSessionByProfileAndServer(username, serverID)
 	if session == nil {
-		c.JSON(http.StatusOK, gin.H{})
+		log.Printf("[HasJoined] session not found for profile=%s, serverID=%s", profile.ID, serverID)
+		c.Status(http.StatusNoContent)
 		return
 	}
 
-	if ip != "" && session.IP != ip {
-		c.JSON(http.StatusOK, gin.H{})
+	if ip != "" && config.AppConfig.Yggdrasil.FeatureFlags.EnableIPCheck && session.IP != ip {
+		log.Printf("[HasJoined] IP mismatch: session.IP=%s, query.ip=%s", session.IP, ip)
+		c.Status(http.StatusNoContent)
 		return
 	}
 
@@ -391,6 +397,8 @@ func (yc *YggdrasilController) HasJoined(c *gin.Context) {
 		}
 		props = append(props, p)
 	}
+
+	log.Printf("[HasJoined] success for username=%s, profile=%s", username, profile.ID)
 
 	c.JSON(http.StatusOK, gin.H{
 		"id":         profile.ID,
