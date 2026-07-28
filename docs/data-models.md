@@ -11,7 +11,6 @@
 | [User](#user) | `users` | 用户信息 |
 | [Profile](#profile) | `profiles` | Minecraft 角色资料 |
 | [ProfileProperty](#profileproperty) | `profile_properties` | 角色属性（如纹理） |
-| [UserProperty](#userproperty) | `user_properties` | 用户属性 |
 | [Token](#token) | `tokens` | Yggdrasil 认证令牌 |
 | [Session](#session) | `sessions` | 服务器会话 |
 
@@ -39,7 +38,7 @@
 | `mbe` | tinyint(1) | **Mojang Bind Enabled**：1 = 允许同名 Mojang 玩家通过 M.T. `/register` 绑定；0 = HA 优先拒绝（默认 0）|
 | `mojang_uuid` | string(32) | 绑定的 Mojang UUID（无连字符小写 hex，`NULL`=未绑；`UNIQUE` 索引 `uk_users_mojang_uuid`）|
 
-> **历史字段**：早期版本曾有 `created_at`/`updated_at`（GORM 自动维护）、`locale`/`score`/`is_dark_mode`/`lastlogin`/`x`/`y`/`z`/`world`/`regdate`/`yaw`/`pitch`/`isLogged`/`hasSession` 共 13 个字段。这些字段是**为兼容 [Blessing Skin](https://github.com/bs-community/blessing-skin) 皮肤站生态**而保留下来的（如 `is_dark_mode` / `lastlogin` / `score` 等 Blessing Skin 私有字段，以及 `x`/`y`/`z`/`world`/`yaw`/`pitch` 这些 Blessing Skin 玩家追踪用字段）。随着 HRPAuth 自身生态建设的需要，这些**纯兼容目的的字段**已全部移除——HA 不再依赖 Blessing Skin 的私有 schema，残留字段只会增加维护成本而无实际价值。
+> **历史字段**：共享库当前 baseline 里仍有 `locale`/`score`/`is_dark_mode`/`lastlogin`/`x`/`y`/`z`/`world`/`regdate`/`yaw`/`pitch`/`isLogged`/`hasSession` 等 Blessing Skin 兼容遗留字段。它们已不在当前 Go 模型中显式维护，只是为了忠实冻结现有共享库 schema 而暂时保留；后续会通过独立 migration 逐步清理。
 >
 > 受影响的下游功能：
 > - **代注册清理 routine** 改用 `register_at` + `last_sign_at`（参考 `references/HA-ROADMAP.md` §4），原本基于 `created_at` + `updated_at` 的清理 SQL 不再适用。
@@ -104,17 +103,6 @@
 | `value` | string | 属性值（base64 编码的 JSON） |
 | `signature` | string | 用私钥对 `value` 的 RSA 签名 |
 | `created_at` / `updated_at` | datetime | GORM 自动维护 |
-
-## UserProperty
-
-表名：`user_properties`
-
-| 字段 | 类型 | 说明 |
-|------|------|------|
-| `id` | uint | 主键 |
-| `user_id` | uint | 用户 ID（外键） |
-| `name` | string | 属性名 |
-| `value` | string | 属性值 |
 
 ## Token
 

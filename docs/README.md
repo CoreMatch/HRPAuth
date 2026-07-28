@@ -13,6 +13,7 @@
 | [overview.md](./overview.md) | 项目概述、技术栈、整体架构 |
 | [tokens.md](./tokens.md) | Token 体系总览、状态机、生命周期、后台清理 |
 | [data-models.md](./data-models.md) | 数据模型（User / Profile / Token / Session 等） |
+| [database-migrations.md](./database-migrations.md) | 数据库迁移、baseline 与 schema sync 流程 |
 | [feature-flags.md](./feature-flags.md) | 功能开关说明 |
 | [configuration.md](./configuration.md) | 配置文件结构与全部字段 |
 

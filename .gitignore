@@ -3,3 +3,4 @@ hrpauth-backend
 build/*
 .trae
 .devcontainer
+migrate

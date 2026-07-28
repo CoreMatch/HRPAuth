@@ -56,18 +56,6 @@ func (ProfileProperty) TableName() string {
 	return "profile_properties"
 }
 
-type UserProperty struct {
-	ID        int    `gorm:"primaryKey;autoIncrement;column:id"`
-	UserID    string `gorm:"type:varchar(32);column:user_id;index"`
-	Name      string `gorm:"type:varchar(255);column:name"`
-	Value     string `gorm:"type:text;column:value"`
-	Signature string `gorm:"type:text;column:signature"`
-}
-
-func (UserProperty) TableName() string {
-	return "user_properties"
-}
-
 type Token struct {
 	ID                int       `gorm:"primaryKey;autoIncrement;column:id"`
 	AccessToken       string    `gorm:"type:varchar(255);uniqueIndex;column:access_token"`
