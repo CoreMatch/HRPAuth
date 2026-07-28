@@ -1,7 +1,5 @@
 hrpauth
 hrpauth-backend
-docs
 build/*
 .trae
-references
 .devcontainer
