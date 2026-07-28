@@ -34,7 +34,7 @@ func (User) TableName() string {
 type Profile struct {
 	ID        string    `gorm:"primaryKey;type:varchar(32);column:id"`
 	UserID    string    `gorm:"type:varchar(32);column:user_id;index"`
-	Name      string    `gorm:"type:varchar(30);column:name"`
+	Name      string    `gorm:"type:varchar(16);column:name"`
 	Model     string    `gorm:"type:enum('default','slim');default:'default';column:model"`
 	CreatedAt time.Time `gorm:"column:created_at"`
 	UpdatedAt time.Time `gorm:"column:updated_at"`
@@ -45,11 +45,11 @@ func (Profile) TableName() string {
 }
 
 type ProfileProperty struct {
-	ID        int    `gorm:"primaryKey;autoIncrement;column:id"`
-	ProfileID string `gorm:"type:varchar(32);column:profile_id;index"`
-	Name      string `gorm:"type:varchar(255);column:name"`
-	Value     string `gorm:"type:text;column:value"`
-	Signature string `gorm:"type:text;column:signature"`
+	ID        int     `gorm:"primaryKey;autoIncrement;column:id"`
+	ProfileID string  `gorm:"type:varchar(32);column:profile_id;index"`
+	Name      string  `gorm:"type:varchar(255);column:name"`
+	Value     string  `gorm:"type:text;column:value"`
+	Signature *string `gorm:"type:text;column:signature"`
 }
 
 func (ProfileProperty) TableName() string {
@@ -61,7 +61,7 @@ type Token struct {
 	AccessToken       string    `gorm:"type:varchar(255);uniqueIndex;column:access_token"`
 	ClientToken       string    `gorm:"type:varchar(255);index:idx_tokens_client_token;column:client_token"`
 	UserID            string    `gorm:"type:varchar(32);column:user_id;index"`
-	SelectedProfileID string    `gorm:"type:varchar(32);column:selected_profile_id;index"`
+	SelectedProfileID *string   `gorm:"type:varchar(32);column:selected_profile_id;index"`
 	IssuedAt          int64     `gorm:"type:bigint(20);column:issued_at"`
 	ExpiresInDays     int       `gorm:"default:15;column:expires_in_days"`
 	State             string    `gorm:"type:enum('valid','temporarily_invalid','invalid');default:'valid';column:state"`
@@ -76,7 +76,7 @@ type Session struct {
 	ID        int       `gorm:"primaryKey;autoIncrement;column:id"`
 	ProfileID string    `gorm:"type:varchar(32);column:profile_id;index"`
 	ServerID  string    `gorm:"type:varchar(255);column:server_id;index:idx_sessions_server_id"`
-	IP        string    `gorm:"type:varchar(45);column:ip"`
+	IP        *string   `gorm:"type:varchar(45);column:ip"`
 	CreatedAt time.Time `gorm:"column:created_at"`
 	ExpiresAt time.Time `gorm:"column:expires_at;index:idx_sessions_expires_at"`
 }

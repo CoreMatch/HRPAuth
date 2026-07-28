@@ -85,8 +85,8 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | string | UUID（主键） |
-| `user_id` | uint | 所属用户 ID（外键） |
-| `name` | string | Minecraft 角色名（唯一） |
+| `user_id` | string(32) | 所属用户 UUID，外键指向 `users.uuid` |
+| `name` | string(16) | Minecraft 角色名（唯一） |
 | `created_at` / `updated_at` | datetime | GORM 自动维护 |
 
 > 一个 User 可以有多个 Profile（多角色），但当前注册流程只创建第一个。如需多角色，调用 Yggdrasil `/api/profiles/minecraft` 之外的扩展接口。
@@ -101,8 +101,7 @@
 | `profile_id` | string | 角色 UUID（外键） |
 | `name` | string | 属性名（如 `textures`） |
 | `value` | string | 属性值（base64 编码的 JSON） |
-| `signature` | string | 用私钥对 `value` 的 RSA 签名 |
-| `created_at` / `updated_at` | datetime | GORM 自动维护 |
+| `signature` | string \| null | 用私钥对 `value` 的 RSA 签名；无签名时为 `NULL` |
 
 ## Token
 
@@ -111,14 +110,14 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | uint | 主键 |
-| `user_id` | uint | 用户 ID |
+| `user_id` | string(32) | 用户 UUID，外键指向 `users.uuid` |
 | `access_token` | string | Yggdrasil Access Token（唯一） |
 | `client_token` | string | Yggdrasil Client Token |
 | `state` | string | 状态：`valid` / `temporarily_invalid` / `invalid` |
-| `profile_id` | string | 关联的角色 UUID（外键，可空） |
+| `selected_profile_id` | string \| null | 关联的角色 UUID（外键，可空） |
 | `issued_at` | int64 | Unix 毫秒时间戳 |
 | `expires_in_days` | int | 有效期天数（默认 15） |
-| `created_at` / `updated_at` | datetime | GORM 自动维护 |
+| `created_at` | datetime | 创建时间 |
 
 > 详细状态机见 [tokens.md](./tokens.md)。
 
@@ -129,10 +128,10 @@
 | 字段 | 类型 | 说明 |
 |------|------|------|
 | `id` | uint | 主键 |
-| `access_token` | string | 关联的 Yggdrasil Access Token |
 | `server_id` | string | Minecraft 服务端传入的 serverId |
 | `profile_id` | string | 关联的角色 UUID |
-| `ip` | string | 客户端 IP（可选） |
-| `created_at` / `updated_at` | datetime | GORM 自动维护 |
+| `ip` | string \| null | 客户端 IP（可选） |
+| `created_at` | datetime | 创建时间 |
+| `expires_at` | datetime | 会话过期时间 |
 
 > Session 由 `POST /sessionserver/session/minecraft/join` 写入，由 `GET /sessionserver/session/minecraft/hasJoined` 读取。

@@ -24,6 +24,7 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
+	"github.com/lnb/HRPAuth-Backend-Go/utils"
 )
 
 type TextureService struct{}
@@ -44,10 +45,10 @@ type TextureInfo struct {
 }
 
 type TexturesPayload struct {
-	Timestamp   int64                    `json:"timestamp"`
-	ProfileID   string                   `json:"profileId"`
-	ProfileName string                   `json:"profileName"`
-	Textures    map[string]TextureInfo   `json:"textures"`
+	Timestamp   int64                  `json:"timestamp"`
+	ProfileID   string                 `json:"profileId"`
+	ProfileName string                 `json:"profileName"`
+	Textures    map[string]TextureInfo `json:"textures"`
 }
 
 func (ts *TextureService) ValidateTexture(file io.Reader, textureType string, model string) ([]byte, error) {
@@ -219,14 +220,14 @@ func (ts *TextureService) UpdateProfileTexture(profileID, textureType, textureUR
 			ProfileID: profileID,
 			Name:      "textures",
 			Value:     value,
-			Signature: signature,
+			Signature: utils.StringPtr(signature),
 		}
 		if err := database.DB.Create(&prop).Error; err != nil {
 			return fmt.Errorf("failed to create profile property: %v", err)
 		}
 	} else {
 		existingProp.Value = value
-		existingProp.Signature = signature
+		existingProp.Signature = utils.StringPtr(signature)
 		if err := database.DB.Save(&existingProp).Error; err != nil {
 			return fmt.Errorf("failed to update profile property: %v", err)
 		}
@@ -374,7 +375,7 @@ func (ts *TextureService) RemoveTextureByUser(userID, profileID, textureType str
 		}
 
 		prop.Value = newValue
-		prop.Signature = signature
+		prop.Signature = utils.StringPtr(signature)
 		if err := database.DB.Save(&prop).Error; err != nil {
 			return fmt.Errorf("failed to update profile property: %v", err)
 		}
@@ -429,7 +430,7 @@ func (ts *TextureService) RemoveTexture(accessToken, profileID, textureType stri
 		}
 
 		prop.Value = newValue
-		prop.Signature = signature
+		prop.Signature = utils.StringPtr(signature)
 		if err := database.DB.Save(&prop).Error; err != nil {
 			return fmt.Errorf("failed to update profile property: %v", err)
 		}
@@ -461,14 +462,14 @@ func (ts *TextureService) GetProfileProperties(profileID string, unsigned bool) 
 			ProfileID: profileID,
 			Name:      "uploadableTextures",
 			Value:     "skin,cape",
-			Signature: "",
+			Signature: nil,
 		}
 		props = append(props, uploadable)
 	}
 
 	if unsigned {
 		for i := range props {
-			props[i].Signature = ""
+			props[i].Signature = nil
 		}
 	}
 
@@ -513,7 +514,7 @@ func (ts *TextureService) CheckDownloadPermission(accessToken, profileID string)
 		return false
 	}
 
-	return token.SelectedProfileID == profileID || NewAuthService().IsProfileOwnedByUser(profileID, token.UserID)
+	return utils.StringValue(token.SelectedProfileID) == profileID || NewAuthService().IsProfileOwnedByUser(profileID, token.UserID)
 }
 
 func parseBearerToken(authHeader string) string {
