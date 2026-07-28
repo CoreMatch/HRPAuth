@@ -152,7 +152,7 @@ go run ./cmd/migrate status
 - [x] `profiles.name` 长度修正（000004）
 - [x] 重复索引清理（000005）
 - [x] `tokens.client_token` 约束修正（000006）
-- [ ] 规划 `users` 上 Blessing Skin 兼容遗留字段的下线 migration
+- [x] `users` 上 Blessing Skin 兼容遗留字段下线（000007）：`locale`/`score`/`is_dark_mode`/`lastlogin`/`x`/`y`/`z`/`world`/`regdate`/`yaw`/`pitch`/`isLogged`/`hasSession` 共 13 字段
 - [ ] 如需继续精简 schema，可在确认无业务依赖后移除更多历史兼容结构
 
 ## 流程参考

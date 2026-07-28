@@ -38,14 +38,6 @@
 | `mbe` | tinyint(1) | **Mojang Bind Enabled**：1 = 允许同名 Mojang 玩家通过 M.T. `/register` 绑定；0 = HA 优先拒绝（默认 0）|
 | `mojang_uuid` | string(32) | 绑定的 Mojang UUID（无连字符小写 hex，`NULL`=未绑；`UNIQUE` 索引 `uk_users_mojang_uuid`）|
 
-> **历史字段**：共享库当前 baseline 里仍有 `locale`/`score`/`is_dark_mode`/`lastlogin`/`x`/`y`/`z`/`world`/`regdate`/`yaw`/`pitch`/`isLogged`/`hasSession` 等 Blessing Skin 兼容遗留字段。它们已不在当前 Go 模型中显式维护，只是为了忠实冻结现有共享库 schema 而暂时保留；后续会通过独立 migration 逐步清理。
->
-> 受影响的下游功能：
-> - **代注册清理 routine** 改用 `register_at` + `last_sign_at`（参考 `references/HA-ROADMAP.md` §4），原本基于 `created_at` + `updated_at` 的清理 SQL 不再适用。
-> - Blessing Skin 共享皮肤站互通的扩展接口（如有）需要重新评估：若仍要兼容 Blessing Skin，需重新加回对应字段或走 Blessing Skin 自己的 OpenAPI/Yggdrasil 扩展。
->
-> **新增字段**（Phase 1 起的 WinnerProxy 接入需要）：`cbh`（代注册标记）、`mojang_uuid`（Mojang 玩家绑定）、`mbe`（允许同名 Mojang 玩家绑定开关）。详见 [§2 字段语义](#字段语义) 与 `references/HA-ROADMAP.md`。
-
 ## 字段语义
 
 ### `cbh`（Created By Human）
