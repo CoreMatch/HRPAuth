@@ -285,7 +285,7 @@ func (as *AuthService) CreateToken(accessToken, clientToken, userID, profileID s
 		AccessToken:       accessToken,
 		ClientToken:       clientToken,
 		UserID:            userID,
-		SelectedProfileID: utils.StringPtr(profileID),
+		SelectedProfileID: profileID,
 		IssuedAt:          utils.CurrentTimestampMillis(),
 		ExpiresInDays:     expiresInDays,
 		State:             "valid",
@@ -435,7 +435,7 @@ func (as *AuthService) CreateSession(profileID, serverID, ip string) bool {
 		First(&existingSession)
 
 	if result.Error == nil {
-		existingSession.IP = utils.NilIfEmpty(ip)
+		existingSession.IP = ip
 		existingSession.ExpiresAt = time.Now().Add(time.Duration(config.AppConfig.Yggdrasil.Security.SessionExpirySeconds) * time.Second)
 		return database.DB.Save(&existingSession).Error == nil
 	}
@@ -443,7 +443,7 @@ func (as *AuthService) CreateSession(profileID, serverID, ip string) bool {
 	session := models.Session{
 		ProfileID: profileID,
 		ServerID:  serverID,
-		IP:        utils.NilIfEmpty(ip),
+		IP:        ip,
 		ExpiresAt: time.Now().Add(time.Duration(config.AppConfig.Yggdrasil.Security.SessionExpirySeconds) * time.Second),
 	}
 	return database.DB.Create(&session).Error == nil

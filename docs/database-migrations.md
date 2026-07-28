@@ -18,6 +18,9 @@
 | `database/migrations/000001_baseline.down.sql` | baseline 回滚 |
 | `database/migrations/000002_add_cbh_and_mojang_uuid.*.sql` | `users.cbh` / `users.mojang_uuid` |
 | `database/migrations/000003_add_mbe.*.sql` | `users.mbe` |
+| `database/migrations/000004_widen_profiles_name.*.sql` | `profiles.name` varchar(16) → varchar(30) |
+| `database/migrations/000005_drop_duplicate_indexes.*.sql` | 清理 `profiles` / `tokens` 重复索引 |
+| `database/migrations/000006_fix_client_token_not_null.*.sql` | `tokens.client_token` 修正为 NOT NULL |
 
 ## 命令用法
 
@@ -124,6 +127,19 @@ go run ./cmd/migrate status
 
 - 给 `users` 增加 `mbe`
 
+### `000004_widen_profiles_name`
+
+- `profiles.name` 从 `varchar(16)` 扩展为 `varchar(30)`，对齐 Go 模型定义
+
+### `000005_drop_duplicate_indexes`
+
+- 移除 `profiles` 上重复的 `idx_profiles_name`（已有 `UNIQUE KEY name` 覆盖）
+- 移除 `tokens` 上重复的 `idx_tokens_access_token`（已有 `UNIQUE KEY access_token` 覆盖）
+
+### `000006_fix_client_token_not_null`
+
+- `tokens.client_token` 修正为 `NOT NULL`，对齐基线库约束
+
 ## 运行时约束
 
 - 应用启动不负责改表；数据库初始化仅建立连接
@@ -133,6 +149,14 @@ go run ./cmd/migrate status
 
 ## 后续整理项
 
-- 继续处理代码模型与共享库的 drift，例如 `profiles.name` 长度、重复索引、字段可空性
-- 规划 `users` 上 Blessing Skin 兼容遗留字段的下线 migration
-- 如需继续精简 schema，可在确认无业务依赖后移除更多历史兼容结构
+- [x] `profiles.name` 长度修正（000004）
+- [x] 重复索引清理（000005）
+- [x] `tokens.client_token` 约束修正（000006）
+- [ ] 规划 `users` 上 Blessing Skin 兼容遗留字段的下线 migration
+- [ ] 如需继续精简 schema，可在确认无业务依赖后移除更多历史兼容结构
+
+## 流程参考
+
+- `references/HA-ROADMAP.md` — Phase 1 数据库迁移设计
+- `docs/data-models.md` — 数据模型文档
+- `cmd/migrate/main_test.go` — 迁移 CLI 单元测试

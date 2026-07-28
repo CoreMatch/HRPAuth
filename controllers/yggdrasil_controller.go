@@ -166,7 +166,7 @@ func (yc *YggdrasilController) Authenticate(c *gin.Context) {
 
 	if existing := yc.authService.GetValidTokenByClientToken(user.UUID, clientToken); existing != nil {
 		for _, p := range profiles {
-			if p.ID == utils.StringValue(existing.SelectedProfileID) {
+			if p.ID == existing.SelectedProfileID {
 				selectedProfile = p
 				break
 			}
@@ -224,7 +224,7 @@ func (yc *YggdrasilController) Refresh(c *gin.Context) {
 	newAccessToken := utils.GenerateAccessToken()
 	yc.authService.InvalidateToken(req.AccessToken)
 
-	selectedProfileID := utils.StringValue(token.SelectedProfileID)
+	selectedProfileID := token.SelectedProfileID
 	if req.SelectedProfile != nil {
 		if yc.authService.IsProfileOwnedByUser(req.SelectedProfile.ID, token.UserID) {
 			selectedProfileID = req.SelectedProfile.ID
@@ -327,7 +327,7 @@ func (yc *YggdrasilController) Join(c *gin.Context) {
 		return
 	}
 
-	if req.SelectedProfile != utils.StringValue(token.SelectedProfileID) {
+	if req.SelectedProfile != token.SelectedProfileID {
 		if !yc.authService.IsProfileOwnedByUser(req.SelectedProfile, token.UserID) {
 			sendYggdrasilError(c, "ForbiddenOperationException", "Invalid profile.", http.StatusForbidden)
 			return
@@ -369,8 +369,8 @@ func (yc *YggdrasilController) HasJoined(c *gin.Context) {
 		return
 	}
 
-	if ip != "" && config.AppConfig.Yggdrasil.FeatureFlags.EnableIPCheck && utils.StringValue(session.IP) != ip {
-		log.Printf("[HasJoined] IP mismatch: session.IP=%s, query.ip=%s", utils.StringValue(session.IP), ip)
+	if ip != "" && config.AppConfig.Yggdrasil.FeatureFlags.EnableIPCheck && session.IP != ip {
+		log.Printf("[HasJoined] IP mismatch: session.IP=%s, query.ip=%s", session.IP, ip)
 		c.Status(http.StatusNoContent)
 		return
 	}
@@ -392,8 +392,8 @@ func (yc *YggdrasilController) HasJoined(c *gin.Context) {
 			"name":  prop.Name,
 			"value": prop.Value,
 		}
-		if prop.Signature != nil && *prop.Signature != "" {
-			p["signature"] = *prop.Signature
+		if prop.Signature != "" {
+			p["signature"] = prop.Signature
 		}
 		props = append(props, p)
 	}
@@ -440,8 +440,8 @@ func (yc *YggdrasilController) ProfileQuery(c *gin.Context) {
 			"name":  prop.Name,
 			"value": prop.Value,
 		}
-		if prop.Signature != nil && *prop.Signature != "" && !unsigned {
-			p["signature"] = *prop.Signature
+		if prop.Signature != "" && !unsigned {
+			p["signature"] = prop.Signature
 		}
 		props = append(props, p)
 	}

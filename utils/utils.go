@@ -109,21 +109,3 @@ func ExtractDomain(rawURL string) string {
 func CurrentTimestampMillis() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
 }
-
-func StringPtr(value string) *string {
-	return &value
-}
-
-func NilIfEmpty(value string) *string {
-	if value == "" {
-		return nil
-	}
-	return &value
-}
-
-func StringValue(value *string) string {
-	if value == nil {
-		return ""
-	}
-	return *value
-}

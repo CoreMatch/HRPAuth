@@ -1,0 +1,14 @@
+ALTER TABLE `users`
+  DROP COLUMN `locale`,
+  DROP COLUMN `score`,
+  DROP COLUMN `is_dark_mode`,
+  DROP COLUMN `lastlogin`,
+  DROP COLUMN `x`,
+  DROP COLUMN `y`,
+  DROP COLUMN `z`,
+  DROP COLUMN `world`,
+  DROP COLUMN `regdate`,
+  DROP COLUMN `yaw`,
+  DROP COLUMN `pitch`,
+  DROP COLUMN `isLogged`,
+  DROP COLUMN `hasSession`;
