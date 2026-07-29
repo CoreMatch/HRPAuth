@@ -77,6 +77,7 @@
 | 认证 | POST | `/captcha` | 否 |
 | 认证 | GET | `/captcha/image/:token` | 否 |
 | 用户 | POST | `/user` | **是** |
+| 用户 | POST | `/user/declare-email` | **Manage Token** |
 | 用户 | POST | `/user/mojang-bind-enable` | **是**（或 Manage Token + uid/email）|
 | 邮箱 | POST | `/email-verification` | 视 action 而定 |
 | TOTP | POST | `/totp/setup` | **是** |
@@ -215,7 +216,40 @@ M.T. 路径**新建代注册**用户时（M.T. + 新 username + mojang_uuid）�
 
 > WebUI 用户在 WebUI 个人设置里点"允许 Mojang 绑定"会调 `POST /user/mojang-bind-enable`，把 `mbe` 置为 1。
 
-### 4.3 GET /logout
+### 4.3 POST /user/declare-email
+
+**所需 Token：** **Manage Token**（字段名 `mt`）
+
+**请求体：**
+```json
+{
+  "mt": "<Manage Token>",
+  "email": "player@example.com",
+  "playername": "PlayerOne"
+}
+```
+
+**成功响应：**
+```json
+{
+  "success": true,
+  "message": "Email declared successfully",
+  "data": {
+    "uid": 1,
+    "email": "player@example.com",
+    "username": "PlayerOne"
+  }
+}
+```
+
+**失败响应：**
+```json
+{ "success": false, "message": "invalid manage token" }
+```
+
+> 该接口仅更新用户邮箱字段，不修改 `cbh` 状态。
+
+### 4.4 GET /logout
 
 **所需 Token：** **Remember Token**
 

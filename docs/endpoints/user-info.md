@@ -3,6 +3,7 @@
 | 端点 | 方法 | 鉴权 |
 |------|------|------|
 | [POST /user](#post-user) | `POST` | **Remember Token** |
+| [POST /user/declare-email](#post-userdeclare-email) | `POST` | **Manage Token** |
 | [POST /user/mojang-bind-enable](#post-usermojang-bind-enable) | `POST` | **Remember Token** 或 **Manage Token** |
 
 > 详细实现： [`controllers/user_info_controller.go`](../../controllers/user_info_controller.go)
@@ -81,6 +82,58 @@
 - 已登录态刷新时验证 Token 仍有效
 - 拉取用户最新信息（用户名、邮箱、验证状态）
 - 决定是否引导用户完成邮箱验证或开启 TOTP
+
+---
+
+## POST /user/declare-email
+
+为指定玩家声明邮箱。该接口仅更新用户的邮箱字段，不修改 `cbh` 状态。
+
+| 字段 | 值 |
+|------|---|
+| 方法 | `POST` |
+| 鉴权 | **Manage Token** |
+| 实现 | [`controllers/user_info_controller.go`](../../controllers/user_info_controller.go) |
+
+### 请求体
+
+```json
+{
+  "mt": "<Manage Token>",
+  "email": "player@example.com",
+  "playername": "PlayerOne"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `mt` | string | 是 | Manage Token |
+| `email` | string | 是 | 要声明的邮箱 |
+| `playername` | string | 是 | 目标玩家名 |
+
+### 成功响应
+
+```json
+{
+  "success": true,
+  "message": "Email declared successfully",
+  "data": {
+    "uid": 1,
+    "email": "player@example.com",
+    "username": "PlayerOne"
+  }
+}
+```
+
+### 失败响应
+
+| HTTP | message | 触发场景 |
+|------|---------|----------|
+| 400 | `mt, email, and playername are required` | 缺少必填字段 |
+| 400 | `invalid email` | 邮箱格式非法 |
+| 401 | `invalid manage token` | Manage Token 错误 |
+| 404 | `user not found` | 未找到对应玩家 |
+| 409 | `Email already registered` | 邮箱已被其他用户使用 |
 
 ---
 
