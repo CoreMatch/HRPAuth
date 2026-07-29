@@ -2,5 +2,5 @@
 
 ## Build
 ```bash
-go build -o build/HRPAuth-Backend-Go
+go build -o build/HRPAuth
 ```

@@ -15,8 +15,9 @@ import (
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang-migrate/migrate/v4"
 	mysqldriver "github.com/golang-migrate/migrate/v4/database/mysql"
-	_ "github.com/golang-migrate/migrate/v4/source/file"
+	"github.com/golang-migrate/migrate/v4/source/iofs"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
+	"github.com/lnb/HRPAuth-Backend-Go/database/migrations"
 	"github.com/lnb/HRPAuth-Backend-Go/utils"
 
 	"gopkg.in/yaml.v3"
@@ -342,10 +343,9 @@ func (sc *StartupController) generateRandomString(length int) string {
 	return string(b)
 }
 
-// EnsureMigrations checks whether the database has been initialized via
-// golang-migrate. If the schema_migrations table exists and contains a
-// version record, startup continues normally. Otherwise, full migrations
-// (up) are run automatically.
+// EnsureMigrations runs all pending database migrations via golang-migrate.
+// It is idempotent — if the database is already at the latest version,
+// migrate.ErrNoChange is silently ignored.
 func (sc *StartupController) EnsureMigrations() error {
 	cfg := config.AppConfig.Database
 	dsn := fmt.Sprintf(
@@ -359,26 +359,6 @@ func (sc *StartupController) EnsureMigrations() error {
 	}
 	defer db.Close()
 
-	// Step 1: check whether schema_migrations table exists
-	var tblCount int
-	if err := db.QueryRow(
-		"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'schema_migrations'",
-	).Scan(&tblCount); err != nil {
-		return fmt.Errorf("failed to query information_schema: %v", err)
-	}
-
-	if tblCount > 0 {
-		// Table exists → check for a version row
-		var version *int
-		if err := db.QueryRow("SELECT version FROM schema_migrations LIMIT 1").Scan(&version); err == nil {
-			log.Printf("Database already migrated at version %d", *version)
-			return nil
-		}
-	}
-
-	// Step 2: table does not exist, or exists but is empty → run full up
-	log.Println("No database migration found, initializing schema...")
-
 	driver, err := mysqldriver.WithInstance(db, &mysqldriver.Config{
 		MigrationsTable: "schema_migrations",
 	})
@@ -386,12 +366,12 @@ func (sc *StartupController) EnsureMigrations() error {
 		return fmt.Errorf("failed to create migration driver: %v", err)
 	}
 
-	migrationsDir, err := filepath.Abs(filepath.Join("database", "migrations"))
+	src, err := iofs.New(migrations.FS, ".")
 	if err != nil {
-		return fmt.Errorf("failed to resolve migrations dir: %v", err)
+		return fmt.Errorf("failed to create migration source from embedded files: %v", err)
 	}
 
-	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsDir, cfg.DBName, driver)
+	m, err := migrate.NewWithInstance("iofs", src, cfg.DBName, driver)
 	if err != nil {
 		return fmt.Errorf("failed to create migrator: %v", err)
 	}

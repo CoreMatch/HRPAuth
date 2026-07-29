@@ -27,7 +27,7 @@ CREATE TABLE `users` (
   `hasSession` smallint NOT NULL DEFAULT '0',
   `totp` varchar(32) COLLATE utf8mb4_unicode_ci DEFAULT NULL,
   PRIMARY KEY (`uid`),
-  KEY `idx_uuid` (`uuid`)
+  UNIQUE KEY `idx_uuid` (`uuid`)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE `profiles` (
