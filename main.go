@@ -83,6 +83,7 @@ func main() {
 		api.POST("/register", authCtrl.Register)
 		api.GET("/logout", authCtrl.Logout)
 		api.POST("/user", userInfoCtrl.GetUser)
+		api.POST("/user/declare-email", userInfoCtrl.DeclareEmail)
 		api.POST("/user/mojang-bind-enable", userInfoCtrl.EnableMojangBind)
 
 		api.POST("/email-verification", emailCtrl.Handle)

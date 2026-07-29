@@ -1,7 +1,9 @@
 package controllers
 
 import (
+	"fmt"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
@@ -19,6 +21,23 @@ type GetUserRequest struct {
 	RememberToken string `json:"remember_token"`
 	UID           string `json:"uid"`
 	Email         string `json:"email"`
+}
+
+type DeclareEmailRequest struct {
+	ManageToken string `json:"mt"`
+	Email       string `json:"email"`
+	PlayerName  string `json:"playername"`
+}
+
+func normalizeDeclaredEmail(raw string) (string, error) {
+	normalized := strings.TrimSpace(strings.ToLower(raw))
+	if normalized == "" {
+		return "", fmt.Errorf("email is required")
+	}
+	if !isValidEmail(normalized) {
+		return "", fmt.Errorf("invalid email")
+	}
+	return normalized, nil
 }
 
 func (uc *UserInfoController) GetUser(c *gin.Context) {
@@ -122,6 +141,98 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 //
 // After a successful bind (users.mojang_uuid is set) this field becomes
 // irrelevant and is left untouched.
+func (uc *UserInfoController) DeclareEmail(c *gin.Context) {
+	var req DeclareEmailRequest
+	manageToken := ""
+	email := ""
+	playerName := ""
+
+	if err := c.ShouldBindJSON(&req); err == nil {
+		manageToken = req.ManageToken
+		email = req.Email
+		playerName = req.PlayerName
+	}
+	if manageToken == "" {
+		manageToken = c.PostForm("mt")
+	}
+	if email == "" {
+		email = c.PostForm("email")
+	}
+	if playerName == "" {
+		playerName = c.PostForm("playername")
+	}
+	if manageToken == "" {
+		manageToken = c.Query("mt")
+	}
+	if email == "" {
+		email = c.Query("email")
+	}
+	if playerName == "" {
+		playerName = c.Query("playername")
+	}
+
+	if manageToken == "" || email == "" || playerName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "mt, email, and playername are required",
+		})
+		return
+	}
+
+	if config.AppConfig.Manage.Token == "" || manageToken != config.AppConfig.Manage.Token {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "invalid manage token",
+		})
+		return
+	}
+
+	normalizedEmail, err := normalizeDeclaredEmail(email)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": err.Error(),
+		})
+		return
+	}
+
+	var user models.User
+	if err := database.DB.Where("username = ?", playerName).First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "user not found",
+		})
+		return
+	}
+
+	var existing models.User
+	if err := database.DB.Where("email = ?", normalizedEmail).First(&existing).Error; err == nil && existing.UID != user.UID {
+		c.JSON(http.StatusConflict, gin.H{
+			"success": false,
+			"message": "Email already registered",
+		})
+		return
+	}
+
+	if err := database.DB.Model(&user).Update("email", normalizedEmail).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to declare email",
+		})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Email declared successfully",
+		"data": gin.H{
+			"uid":      user.UID,
+			"email":    normalizedEmail,
+			"username": user.Username,
+		},
+	})
+}
+
 func (uc *UserInfoController) EnableMojangBind(c *gin.Context) {
 	var req GetUserRequest
 	token := ""
