@@ -20,26 +20,19 @@ go run ./cmd/migrate force 1          # 强制标记版本（不执行 SQL）
 
 | 编号 | 内容 |
 |------|------|
-| 000001 | baseline：5 张核心表现状快照 |
-| 000002 | `users.cbh` + `users.mojang_uuid`（唯一索引 `ascii_bin`） |
-| 000003 | `users.mbe` |
-| 000004 | `profiles.name` varchar(16) → varchar(30) |
-| 000005 | 清理 `profiles` / `tokens` 重复索引 |
-| 000006 | `tokens.client_token` 修正为 NOT NULL |
-| 000007 | 下线 Blessing Skin 兼容遗留 13 字段 |
+| 000001 | baseline：5 张表最终 Schema（已合并 000002～000007 所有增量变更） |
 
 ## 空库初始化
 
 ```bash
 go run ./cmd/migrate up
-go run ./cmd/migrate status   # 应显示最新版本，dirty: false
+go run ./cmd/migrate status   # 版本=1，dirty: false
 ```
 
 ## 已有共享库纳管
 
 ```bash
 go run ./cmd/migrate force 1  # 对齐 baseline，不执行 SQL
-go run ./cmd/migrate up       # 执行后续增量
 go run ./cmd/migrate status
 ```
 
