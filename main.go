@@ -38,6 +38,11 @@ func main() {
 
 	config.Load()
 	database.Init()
+
+	if err := startupCtrl.EnsureMigrations(); err != nil {
+		log.Fatalf("Failed to ensure database migrations: %v", err)
+	}
+
 	redis.Init()
 
 	cleanupCtrl := controllers.NewTokenCleanupController()

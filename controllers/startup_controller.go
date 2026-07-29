@@ -4,12 +4,18 @@ import (
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
+	"database/sql"
 	"encoding/pem"
+	"errors"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
 
+	_ "github.com/go-sql-driver/mysql"
+	"github.com/golang-migrate/migrate/v4"
+	mysqldriver "github.com/golang-migrate/migrate/v4/database/mysql"
+	_ "github.com/golang-migrate/migrate/v4/source/file"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/utils"
 
@@ -334,4 +340,73 @@ func (sc *StartupController) generateRandomString(length int) string {
 		b[i] = charset[i%len(charset)]
 	}
 	return string(b)
+}
+
+// EnsureMigrations checks whether the database has been initialized via
+// golang-migrate. If the schema_migrations table exists and contains a
+// version record, startup continues normally. Otherwise, full migrations
+// (up) are run automatically.
+func (sc *StartupController) EnsureMigrations() error {
+	cfg := config.AppConfig.Database
+	dsn := fmt.Sprintf(
+		"%s:%s@tcp(%s)/%s?charset=%s&parseTime=True&loc=Local&multiStatements=true",
+		cfg.User, cfg.Password, cfg.Host, cfg.DBName, cfg.Charset,
+	)
+
+	db, err := sql.Open("mysql", dsn)
+	if err != nil {
+		return fmt.Errorf("failed to open database for migration check: %v", err)
+	}
+	defer db.Close()
+
+	// Step 1: check whether schema_migrations table exists
+	var tblCount int
+	if err := db.QueryRow(
+		"SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = 'schema_migrations'",
+	).Scan(&tblCount); err != nil {
+		return fmt.Errorf("failed to query information_schema: %v", err)
+	}
+
+	if tblCount > 0 {
+		// Table exists → check for a version row
+		var version *int
+		if err := db.QueryRow("SELECT version FROM schema_migrations LIMIT 1").Scan(&version); err == nil {
+			log.Printf("Database already migrated at version %d", *version)
+			return nil
+		}
+	}
+
+	// Step 2: table does not exist, or exists but is empty → run full up
+	log.Println("No database migration found, initializing schema...")
+
+	driver, err := mysqldriver.WithInstance(db, &mysqldriver.Config{
+		MigrationsTable: "schema_migrations",
+	})
+	if err != nil {
+		return fmt.Errorf("failed to create migration driver: %v", err)
+	}
+
+	migrationsDir, err := filepath.Abs(filepath.Join("database", "migrations"))
+	if err != nil {
+		return fmt.Errorf("failed to resolve migrations dir: %v", err)
+	}
+
+	m, err := migrate.NewWithDatabaseInstance("file://"+migrationsDir, cfg.DBName, driver)
+	if err != nil {
+		return fmt.Errorf("failed to create migrator: %v", err)
+	}
+	defer func() {
+		_, dbErr := m.Close()
+		if dbErr != nil {
+			log.Printf("warning: migration close error: %v", dbErr)
+		}
+	}()
+
+	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		return fmt.Errorf("failed to run migrations: %v", err)
+	}
+
+	version, dirty, _ := m.Version()
+	log.Printf("Database migration completed at version %d (dirty: %t)", version, dirty)
+	return nil
 }
