@@ -70,7 +70,7 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 			"enable": 0,
 		},
 		"database": map[string]interface{}{
-			"host":     "192.168.1.124",
+			"host":     "127.0.0.1",
 			"db_name":  "hrpa",
 			"user":     "hrpa",
 			"password": "hrpa",
