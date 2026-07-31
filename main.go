@@ -154,5 +154,7 @@ func main() {
 		})
 	})
 
+	log.Printf("server listening on %s", config.AppConfig.Server.Port)
+
 	r.Run(config.AppConfig.Server.Port)
 }
