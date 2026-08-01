@@ -25,6 +25,8 @@ import (
 
 type StartupController struct{}
 
+const schemaMigrationService = "HA"
+
 func NewStartupController() *StartupController {
 	return &StartupController{}
 }
@@ -382,11 +384,31 @@ func (sc *StartupController) EnsureMigrations() error {
 		}
 	}()
 
+	if err := sc.ensureSchemaMigrationServiceColumn(db); err != nil {
+		return err
+	}
+
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("failed to run migrations: %v", err)
 	}
 
 	version, dirty, _ := m.Version()
 	log.Printf("Database migration completed at version %d (dirty: %t)", version, dirty)
+	return nil
+}
+
+func (sc *StartupController) ensureSchemaMigrationServiceColumn(db *sql.DB) error {
+	queries := []string{
+		"ALTER TABLE `schema_migrations` ADD COLUMN IF NOT EXISTS `service` varchar(16) NOT NULL DEFAULT '" + schemaMigrationService + "' AFTER `dirty`",
+		"ALTER TABLE `schema_migrations` MODIFY COLUMN `service` varchar(16) NOT NULL DEFAULT '" + schemaMigrationService + "' AFTER `dirty`",
+		"UPDATE `schema_migrations` SET `service` = '" + schemaMigrationService + "' WHERE `service` <> '" + schemaMigrationService + "' OR `service` IS NULL",
+	}
+
+	for _, query := range queries {
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("failed to ensure schema_migrations service column: %v", err)
+		}
+	}
+
 	return nil
 }
