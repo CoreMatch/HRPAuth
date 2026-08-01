@@ -398,8 +398,27 @@ func (sc *StartupController) EnsureMigrations() error {
 }
 
 func (sc *StartupController) ensureSchemaMigrationServiceColumn(db *sql.DB) error {
+	const columnExistsQuery = `
+		SELECT COUNT(*)
+		FROM information_schema.COLUMNS
+		WHERE TABLE_SCHEMA = DATABASE()
+		  AND TABLE_NAME = 'schema_migrations'
+		  AND COLUMN_NAME = 'service'
+	`
+
+	var columnCount int
+	if err := db.QueryRow(columnExistsQuery).Scan(&columnCount); err != nil {
+		return fmt.Errorf("failed to check schema_migrations service column: %v", err)
+	}
+
+	if columnCount == 0 {
+		query := "ALTER TABLE `schema_migrations` ADD COLUMN `service` varchar(16) NOT NULL DEFAULT '" + schemaMigrationService + "' AFTER `dirty`"
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("failed to add schema_migrations service column: %v", err)
+		}
+	}
+
 	queries := []string{
-		"ALTER TABLE `schema_migrations` ADD COLUMN IF NOT EXISTS `service` varchar(16) NOT NULL DEFAULT '" + schemaMigrationService + "' AFTER `dirty`",
 		"ALTER TABLE `schema_migrations` MODIFY COLUMN `service` varchar(16) NOT NULL DEFAULT '" + schemaMigrationService + "' AFTER `dirty`",
 		"UPDATE `schema_migrations` SET `service` = '" + schemaMigrationService + "' WHERE `service` <> '" + schemaMigrationService + "' OR `service` IS NULL",
 	}
