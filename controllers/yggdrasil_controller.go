@@ -79,8 +79,15 @@ func (yc *YggdrasilController) Meta(c *gin.Context) {
 	frontendURL := config.AppConfig.Frontend.URL
 
 	links := gin.H{
-		"homepage": frontendURL,
-		"register": strings.TrimRight(frontendURL, "/") + "/register",
+		"homepage": cfg.Links.Homepage,
+		"register": cfg.Links.Register,
+	}
+
+	if links["homepage"] == "" {
+		links["homepage"] = frontendURL
+	}
+	if links["register"] == "" {
+		links["register"] = strings.TrimRight(frontendURL, "/") + "/register"
 	}
 
 	skinDomains := cfg.SkinDomains
@@ -93,11 +100,26 @@ func (yc *YggdrasilController) Meta(c *gin.Context) {
 
 	c.Header("X-Authlib-Injector-API-Location", "/")
 
+	serverName := cfg.Name
+	if serverName == "" {
+		serverName = config.AppConfig.Site.Name
+	}
+
+	implName := cfg.Implementation
+	if implName == "" {
+		implName = config.AppConfig.Site.Implementation
+	}
+
+	implVersion := cfg.Version
+	if implVersion == "" {
+		implVersion = config.AppConfig.Site.Version
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"meta": gin.H{
-			"serverName":                          cfg.Name,
-			"implementationName":                  cfg.Implementation,
-			"implementationVersion":               cfg.Version,
+			"serverName":                          serverName,
+			"implementationName":                  implName,
+			"implementationVersion":               implVersion,
 			"links":                               links,
 			"feature.non_email_login":             config.AppConfig.Yggdrasil.FeatureFlags.NonEmailLogin,
 			"feature.legacy_skin_api":             config.AppConfig.Yggdrasil.FeatureFlags.LegacySkinAPI,
