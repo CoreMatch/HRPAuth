@@ -26,6 +26,7 @@ import (
 type StartupController struct{}
 
 const ConfigFileName = "config.yaml"
+const schemaMigrationService = "HA"
 
 func NewStartupController() *StartupController {
 	return &StartupController{}
@@ -362,7 +363,7 @@ func (sc *StartupController) EnsureMigrations() error {
 	defer db.Close()
 
 	driver, err := mysqldriver.WithInstance(db, &mysqldriver.Config{
-		MigrationsTable: "schema_migrations_ha",
+		MigrationsTable: "schema_migrations",
 	})
 	if err != nil {
 		return fmt.Errorf("failed to create migration driver: %v", err)
@@ -384,11 +385,50 @@ func (sc *StartupController) EnsureMigrations() error {
 		}
 	}()
 
+	if err := sc.ensureSchemaMigrationServiceColumn(db); err != nil {
+		return err
+	}
+
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
 		return fmt.Errorf("failed to run migrations: %v", err)
 	}
 
 	version, dirty, _ := m.Version()
 	log.Printf("Database migration completed at version %d (dirty: %t)", version, dirty)
+	return nil
+}
+
+func (sc *StartupController) ensureSchemaMigrationServiceColumn(db *sql.DB) error {
+	const columnExistsQuery = `
+			SELECT COUNT(*)
+			FROM information_schema.COLUMNS
+			WHERE TABLE_SCHEMA = DATABASE()
+			  AND TABLE_NAME = 'schema_migrations'
+			  AND COLUMN_NAME = 'service'
+	`
+
+	var columnCount int
+	if err := db.QueryRow(columnExistsQuery).Scan(&columnCount); err != nil {
+		return fmt.Errorf("failed to check schema_migrations service column: %v", err)
+	}
+
+	if columnCount == 0 {
+		query := "ALTER TABLE `schema_migrations` ADD COLUMN `service` varchar(16) NOT NULL DEFAULT '" + schemaMigrationService + "' AFTER `dirty`"
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("failed to add schema_migrations service column: %v", err)
+		}
+	}
+
+	queries := []string{
+		"ALTER TABLE `schema_migrations` MODIFY COLUMN `service` varchar(16) NOT NULL DEFAULT '" + schemaMigrationService + "' AFTER `dirty`",
+		"UPDATE `schema_migrations` SET `service` = '" + schemaMigrationService + "' WHERE `service` <> '" + schemaMigrationService + "' OR `service` IS NULL",
+	}
+
+	for _, query := range queries {
+		if _, err := db.Exec(query); err != nil {
+			return fmt.Errorf("failed to ensure schema_migrations service column: %v", err)
+		}
+	}
+
 	return nil
 }
