@@ -12,6 +12,7 @@ Yggdrasil 协议层的功能开关，对应 `yggdrasil.feature_flags.*` 配置�
 | `enable_mojang_anti_features` | `false` | 启用 Mojang 反作弊特性。具体行为由客户端解释 |
 | `enable_profile_key` | `false` | 启用资料密钥（Yggdrasil 1.1+）。Mojang 1.19+ 客户端会请求 `/player/certificates` 之类的新端点 |
 | `username_check` | `true` | 启用用户名检查（限制 Minecraft 角色名格式）。**强烈建议保持 `true`** |
+| `enable_ip_check` | `false` | 启用 IP 校验。开启后 `GET /sessionserver/session/minecraft/hasJoined` 会校验 `query.ip` 与会话记录中的 IP 是否一致，不一致则拒绝（返回 204） |
 
 ## 在响应中的位置
 
