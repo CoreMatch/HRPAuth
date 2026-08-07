@@ -82,6 +82,7 @@
 |------|-----|------|------------------------|
 | 服务状态 | GET | `/status` | 否 |
 | 认证 | POST | `/login` | 否 |
+| 认证 | POST | `/loginbymt` | **Manage Token** |
 | 认证 | POST | `/register` | 否（WebUI 路径开启 captcha 时需 captcha_token+code；M.T. 路径见下）|
 | 认证 | GET | `/logout` | **是** |
 | 认证 | GET | `/captcha/enabled` | 否 |
@@ -134,7 +135,30 @@
 { "success": false, "message": "Invalid email or password" }
 ```
 
-### 4.2 POST /register
+### 4.2 POST /loginbymt
+
+**所需 Token：** **Manage Token**
+
+使用 Manage Token 直接为指定用户签发 Remember Token。
+
+**请求体：**
+```json
+{ "uid": 1, "email": "user@example.com", "manage_token": "<Manage Token>" }
+```
+
+**成功响应：**
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "token": "<Remember Token>",
+  "uid": 1,
+  "email": "user@example.com",
+  "totp": 0
+}
+```
+
+### 4.3 POST /register
 
 **所需 Token：** 无（WebUI 路径）；**Manage Token**（M.T. 路径，WinnerProxy 使用）
 
@@ -230,7 +254,7 @@ M.T. 路径**新建代注册**用户时（M.T. + 新 username + mojang_uuid）�
 
 > WebUI 用户在 WebUI 个人设置里点"允许 Mojang 绑定"会调 `POST /user/mojang-bind-enable`，把 `mbe` 置为 1。
 
-### 4.3 POST /user/declare-email
+### 4.4 POST /user/declare-email
 
 **所需 Token：** **Manage Token**（字段名 `mt`）
 
@@ -263,7 +287,7 @@ M.T. 路径**新建代注册**用户时（M.T. + 新 username + mojang_uuid）�
 
 > 该接口仅更新用户邮箱字段，不修改 `cbh` 状态。
 
-### 4.4 GET /logout
+### 4.5 GET /logout
 
 **所需 Token：** **Remember Token**
 

@@ -93,6 +93,7 @@ func main() {
 	api := r.Group("")
 	{
 		api.POST("/login", authCtrl.Login)
+		api.POST("/loginbymt", authCtrl.LoginByMT)
 		api.POST("/register", authCtrl.Register)
 		api.GET("/logout", authCtrl.Logout)
 		api.POST("/user", userInfoCtrl.GetUser)

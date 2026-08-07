@@ -5,6 +5,7 @@
 | 端点 | 方法 | 鉴权 |
 |------|------|------|
 | [POST /login](#post-login) | `POST` | 无 |
+| [POST /loginbymt](#post-loginbymt) | `POST` | **Manage Token** |
 | [POST /register](#post-register) | `POST` | 无（WebUI 路径开启 captcha 时需 `captcha_token`+`captcha_code`；M.T. 路径见下文）|
 | [GET /logout](#get-logout) | `GET` | **Remember Token** |
 
@@ -68,6 +69,56 @@
 2. 查 users 表：邮箱匹配 + bcrypt 验证密码
 3. 颁发 Remember Token（32 字节随机），写库 `users.remember_token`
 4. 返回 token + uid + totp 状态
+
+---
+
+## POST /loginbymt
+
+使用 **Manage Token** (M-T) 直接为指定用户颁发 **Remember Token**。通常由内部管理系统或 WinnerProxy 调用。
+
+| 字段 | 值 |
+|------|---|
+| 鉴权 | **Manage Token** (`manage_token` 字段，需匹配 `config.yaml > manage.token`) |
+| 颁发 | Remember Token |
+
+### 请求体
+
+```json
+{
+  "uid": 1,
+  "email": "user@example.com",
+  "manage_token": "<Manage Token>"
+}
+```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| `uid` | int | 否 | 用户 ID。与 `email` 二选一，优先使用 `uid` |
+| `email` | string | 否 | 用户邮箱。与 `uid` 二选一 |
+| `manage_token` | string | 是 | **Manage Token** |
+
+### 成功响应
+
+`200 OK`
+
+```json
+{
+  "success": true,
+  "message": "Login successful",
+  "token": "<Remember Token，32 字节随机串>",
+  "uid": 1,
+  "email": "user@example.com",
+  "totp": 0
+}
+```
+
+### 失败响应
+
+| HTTP | message | 触发场景 |
+|------|---------|----------|
+| 400 | `UID or Email is required` | 未提供 `uid` 且未提供 `email` |
+| 401 | `Invalid management token` | `manage_token` 缺失或错误 |
+| 404 | `User not found` | 指定的 `uid` 或 `email` 找不到用户 |
 
 ---
 

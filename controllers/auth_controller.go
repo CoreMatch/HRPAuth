@@ -45,6 +45,12 @@ type LogoutRequest struct {
 	RememberToken string `json:"remember_token"`
 }
 
+type LoginByMTRequest struct {
+	UID         uint   `json:"uid"`
+	Email       string `json:"email"`
+	ManageToken string `json:"manage_token"`
+}
+
 func isValidEmail(email string) bool {
 	_, err := mail.ParseAddress(email)
 	return err == nil
@@ -537,5 +543,78 @@ func (ac *AuthController) Logout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"success": true,
 		"message": "Logout successful",
+	})
+}
+
+// LoginByMT handles POST /loginbymt. It issues a remember_token for a user
+// identified by UID or Email, authenticated by the operator-level M-T.
+func (ac *AuthController) LoginByMT(c *gin.Context) {
+	var req LoginByMTRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid request body",
+		})
+		return
+	}
+
+	// Validate Management Token (M-T).
+	if config.AppConfig.Manage.Token == "" || req.ManageToken != config.AppConfig.Manage.Token {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Invalid management token",
+		})
+		return
+	}
+
+	var user models.User
+	query := database.DB
+	if req.UID != 0 {
+		query = query.Where("uid = ?", req.UID)
+	} else if req.Email != "" {
+		query = query.Where("email = ?", req.Email)
+	} else {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "UID or Email is required",
+		})
+		return
+	}
+
+	if err := query.First(&user).Error; err != nil {
+		c.JSON(http.StatusNotFound, gin.H{
+			"success": false,
+			"message": "User not found",
+		})
+		return
+	}
+
+	// Issue new remember_token.
+	token := utils.GenerateRandomToken(32)
+	now := time.Now()
+
+	if err := database.DB.Model(&user).Updates(map[string]interface{}{
+		"remember_token": token,
+		"last_sign_at":   now,
+	}).Error; err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{
+			"success": false,
+			"message": "Failed to update token",
+		})
+		return
+	}
+
+	totp := 0
+	if user.TOTP != "" {
+		totp = 1
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"message": "Login successful",
+		"token":   token,
+		"uid":     user.UID,
+		"email":   user.Email,
+		"totp":    totp,
 	})
 }
