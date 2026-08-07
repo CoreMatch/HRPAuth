@@ -79,12 +79,17 @@
 
 | 字段 | 值 |
 |------|---|
-| 鉴权 | 无（WebUI 路径）；**Manage Token**（M.T. 路径，使用 `remember_token` 字段携带，值必须匹配 `config.yaml > manage.token`）|
+| 鉴权 | 无（WebUI 路径）；**Manage Token**（M.T. 路径，使用 `remember_token` 字段携带 + 显式声明 `auth_type: "manage"`，值必须匹配 `config.yaml > manage.token`）|
 | 副作用 | `users` 表插入/更新；事务中为该用户创建或获取默认 Profile；**M.T. 路径**还会异步触发代注册用户清理 routine |
 
 ### 路径分流的判定
 
-后端解析 `remember_token` 字段：若与 `config.AppConfig.Manage.Token` 相同且非空 → M.T. 路径，否则 WebUI 路径。**M.T. token 错误时静默降级到 WebUI 路径**（按 §3.1 约定不报错）。
+后端解析可选的 `auth_type` 字段（JSON / 表单 / 查询参数）：
+- 未声明或 `auth_type=remember` → **WebUI 路径**（默认），此时 `remember_token` 字段被忽略——即使 token 恰好等于 M-T 也不会升级。
+- `auth_type=manage` 且 `remember_token` 等于 `config.AppConfig.Manage.Token` → **M.T. 路径**。
+- `auth_type` 为未知值，或声明 `manage` 但 token 与配置 M-T 不符 → `400 Invalid auth type or token`。
+
+判别实现见 [`controllers/auth_controller.go`](../../controllers/auth_controller.go) 的 `isManageRequest`。
 
 ### WebUI 路径请求体
 
@@ -116,12 +121,14 @@
   "username": "PlayerOne",
   "password": "<任意 ≥ 6 字符>",
   "mojang_uuid": "f7c77d999f154a66a87dc4a51ef30d19",
-  "remember_token": "<Manage Token>"
+  "remember_token": "<Manage Token>",
+  "auth_type": "manage"
 }
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
+| `auth_type` | string | 是 | `"manage"`，声明走 M.T. 路径 |
 | `remember_token` | string | 是 | **Manage Token**（M.T.），与 `config.yaml > manage.token` 匹配 |
 | `username` | string | 是 | 长度 ≥ 3 |
 | `password` | string | 是 | 长度 ≥ 6（M.T. 路径下必填，但实际值由 WinnerProxy 自定）|
@@ -194,6 +201,7 @@ M.T. 路径**新建代注册**用户时（M.T. + 新 username + mojang_uuid）�
 | HTTP | message / error | 触发场景 | 路径 |
 |------|----------------|----------|------|
 | 400 | `Invalid request body` | JSON 解析失败 | 通用 |
+| 400 | `Invalid auth type or token` | `auth_type` 为未知值，或声明 `manage` 但 token 与配置 M-T 不符 | 通用 |
 | 400 | `Username too short` | 用户名 < 3 字符 | 通用 |
 | 400 | `Password too short` | 密码 < 6 字符 | 通用 |
 | 400 | `Invalid email` | WebUI 路径下邮箱格式不合法 | WebUI |

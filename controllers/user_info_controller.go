@@ -21,6 +21,7 @@ type GetUserRequest struct {
 	RememberToken string `json:"remember_token"`
 	UID           string `json:"uid"`
 	Email         string `json:"email"`
+	AuthType      string `json:"auth_type"`
 }
 
 type DeclareEmailRequest struct {
@@ -81,7 +82,15 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 		return
 	}
 
-	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	isManage, authOK := isManageRequest(c, token, req.AuthType)
+	if !authOK {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的鉴权类型或token",
+			"data":    nil,
+		})
+		return
+	}
 
 	// M-T acts as a master remtoken: the target user must be identified by
 	// uid or email since M-T itself is not stored on any user row.
@@ -271,7 +280,14 @@ func (uc *UserInfoController) EnableMojangBind(c *gin.Context) {
 		return
 	}
 
-	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	isManage, authOK := isManageRequest(c, token, req.AuthType)
+	if !authOK {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的鉴权类型或token",
+		})
+		return
+	}
 	if isManage && uid == "" && email == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,

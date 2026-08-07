@@ -75,6 +75,8 @@ GET /totpgen?secret=<Base32 TOTP Secret>
 
 **Remember Token**（通过请求体 `remtoken` 字段提交；与 `email` 字段联合校验）
 
+> M.T. 运维代开：`remtoken` 换成 M-T 并传 `"auth_type": "manage"`，即可为指定 `email` 的用户配置 TOTP（跳过 `remtoken` 归属校验）。后端**不再**因 token 恰好等于 M-T 而自动升级。
+
 ### 请求体
 
 ```json
@@ -87,7 +89,8 @@ GET /totpgen?secret=<Base32 TOTP Secret>
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `email` | string | 是 | 用户邮箱 |
-| `remtoken` | string | 是 | Remember Token（字段名 `remtoken`，不是 `remember_token`） |
+| `remtoken` | string | 是 | Remember Token（字段名 `remtoken`，不是 `remember_token`）；M.T. 路径填 M-T |
+| `auth_type` | string | M.T. 必填 `"manage"` | 声明 token 类型，缺省 `remember` |
 
 ### 成功响应
 
@@ -180,6 +183,8 @@ GET /totpgen?secret=<Base32 TOTP Secret>
 
 **Remember Token**（通过请求体 `rt` 字段提交；与 `uid` 字段联合校验 `users.remember_token`）
 
+> M.T. 运维代开：`rt` 换成 M-T 并传 `"auth_type": "manage"`，即可查询任意 `uid` 用户（跳过 `rt` 归属校验）。后端**不再**因 token 恰好等于 M-T 而自动升级。
+
 ### 请求体
 
 ```json
@@ -192,7 +197,8 @@ GET /totpgen?secret=<Base32 TOTP Secret>
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
 | `uid` | string | 是 | 用户 UID |
-| `rt` | string | 是 | Remember Token（字段名 `rt`，不是 `remember_token`） |
+| `rt` | string | 是 | Remember Token（字段名 `rt`，不是 `remember_token`）；M.T. 路径填 M-T |
+| `auth_type` | string | M.T. 必填 `"manage"` | 声明 token 类型，缺省 `remember` |
 
 ### 成功响应
 

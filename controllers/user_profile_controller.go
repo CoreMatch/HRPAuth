@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
@@ -23,6 +22,7 @@ type ChangeUsernameRequest struct {
 	UID           string `json:"uid"`
 	Email         string `json:"email"`
 	Username      string `json:"username"`
+	AuthType      string `json:"auth_type"`
 }
 
 type ChangeProfileNameRequest struct {
@@ -31,6 +31,7 @@ type ChangeProfileNameRequest struct {
 	Email         string `json:"email"`
 	ProfileID     string `json:"profile_id"`
 	Name          string `json:"name"`
+	AuthType      string `json:"auth_type"`
 }
 
 func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
@@ -106,7 +107,14 @@ func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
 		return
 	}
 
-	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	isManage, authOK := isManageRequest(c, token, req.AuthType)
+	if !authOK {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的鉴权类型或token",
+		})
+		return
+	}
 	if isManage && uid == "" && email == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -237,7 +245,14 @@ func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 		return
 	}
 
-	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	isManage, authOK := isManageRequest(c, token, req.AuthType)
+	if !authOK {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的鉴权类型或token",
+		})
+		return
+	}
 	if isManage && uid == "" && email == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,

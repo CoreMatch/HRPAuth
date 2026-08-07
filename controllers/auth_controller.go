@@ -38,6 +38,7 @@ type RegisterRequest struct {
 	CaptchaCode   string `json:"captcha_code"`
 	MojangUUID    string `json:"mojang_uuid"`
 	RememberToken string `json:"remember_token"`
+	AuthType      string `json:"auth_type"`
 }
 
 type LogoutRequest struct {
@@ -61,6 +62,44 @@ func isValidMojangUUID(s string) bool {
 		}
 	}
 	return true
+}
+
+// authTypeFromRequest returns the declared token auth type. It is read from
+// the JSON body, then form fields, then query params — mirroring how
+// remember_token is collected. When undeclared it defaults to "remember".
+// Supported values: "remember" (default) and "manage".
+func authTypeFromRequest(c *gin.Context, jsonAuthType string) string {
+	authType := jsonAuthType
+	if authType == "" {
+		authType = c.PostForm("auth_type")
+	}
+	if authType == "" {
+		authType = c.Query("auth_type")
+	}
+	if authType == "" {
+		authType = "remember"
+	}
+	return authType
+}
+
+// isManageRequest classifies a request by its declared auth_type:
+//   - undeclared / "remember"          -> (false, true)   remember-token path
+//   - "manage" + token == Manage.Token -> (true, true)    genuine M-T request
+//   - anything else (unknown value, or "manage" with a token that does not
+//     match the configured M-T)        -> (false, false)  caller should reject
+//
+// The frontend must declare "manage" explicitly; a plain token that happens to
+// equal the M-T is no longer auto-promoted to the manage path.
+func isManageRequest(c *gin.Context, token, jsonAuthType string) (isManage, valid bool) {
+	switch authTypeFromRequest(c, jsonAuthType) {
+	case "manage":
+		if config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token {
+			return true, true
+		}
+		return false, false
+	default:
+		return false, true
+	}
 }
 
 func (ac *AuthController) Login(c *gin.Context) {
@@ -126,15 +165,16 @@ func (ac *AuthController) Login(c *gin.Context) {
 
 // Register handles POST /register.
 //
-// Two paths are supported, dispatched on whether remember_token matches
-// config.AppConfig.Manage.Token (the operator-level "Manage Token" / M-T):
+// Two paths are supported, dispatched on the declared auth_type:
 //
-//   - Normal WebUI registration: captcha enforced when enabled, email required
-//     and validated, username/email uniqueness checked.
-//   - M.T. (WinnerProxy) registration: captcha and email-format checks are
-//     skipped, email auto-fills with a placeholder when absent, and the
-//     mojang_uuid field drives the upsert/bind logic in references/HA-ROADMAP.md
-//     §3.4 via handleManageRegister.
+//   - Normal WebUI registration (default, auth_type undeclared or "remember"):
+//     captcha enforced when enabled, email required and validated,
+//     username/email uniqueness checked.
+//   - M.T. (WinnerProxy) registration (auth_type="manage" plus the configured
+//     Manage Token): captcha and email-format checks are skipped, email
+//     auto-fills with a placeholder when absent, and the mojang_uuid field
+//     drives the upsert/bind logic in references/HA-ROADMAP.md §3.4 via
+//     handleManageRegister.
 //
 // Both paths return profile_id (Profile.ID) on success. The M.T. new-user case
 // additionally returns cbh: 0 per §3.5.
@@ -148,9 +188,18 @@ func (ac *AuthController) Register(c *gin.Context) {
 		return
 	}
 
-	isManage := req.RememberToken != "" &&
-		config.AppConfig.Manage.Token != "" &&
-		req.RememberToken == config.AppConfig.Manage.Token
+	// The M.T. path is taken only when the caller explicitly declares
+	// auth_type="manage" AND the submitted token matches the configured M-T.
+	// Without a declaration the request is treated as a normal (remember-token
+	// optional) registration, even if the token happens to equal the M-T.
+	isManage, authOK := isManageRequest(c, req.RememberToken, req.AuthType)
+	if !authOK {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"message": "Invalid auth type or token",
+		})
+		return
+	}
 
 	// Username / password length always enforced.
 	if len(req.Username) < 3 {

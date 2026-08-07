@@ -12,7 +12,7 @@
 | Token | 字段名 | 获取方式 | 用途 |
 |-------|-------|---------|------|
 | **Remember Token** | `token`（登录响应）/ `remember_token` / `remtoken` / `rt` | `POST /login` 成功响应 | 本站所有登录态接口的鉴权凭证 |
-| **Manage Token（M-T）** | 同上字段名（任意 remtoken 字段均可） | 首次启动时随机生成，存于 `config.yaml` 的 `manage.token` | **运维超级 remtoken**，等价于"以任意用户身份操作"。必须额外提供 `uid` 或 `email` 指定目标用户 |
+| **Manage Token（M-T）** | 同上字段名（任意 remtoken 字段均可） | 首次启动时随机生成，存于 `config.yaml` 的 `manage.token` | **运维超级 remtoken**，等价于"以任意用户身份操作"。必须额外**声明 `auth_type: "manage"`** 并提供 `uid` 或 `email` 指定目标用户 |
 | 邮箱验证码 | `code`（6 位数字） | `POST /email-verification` (action=send-verification-code) 邮件下发 | 邮箱验证 |
 | 图形验证码 Token | `captcha_token` | `POST /captcha` 响应 | 注册时与 `captcha_code` 配对提交 |
 | 图形验证码答案 | `captcha_code`（4 位字符） | 用户在 `/captcha/image/:token` 图片上识别 | 注册时与 `captcha_token` 配对提交 |
@@ -30,6 +30,17 @@
 3. **表单字段**
 
 **建议**：统一使用请求体 JSON，便于统一拦截器和错误处理。
+
+### auth_type（Token 类型声明）
+
+每个接受 remtoken 的接口还支持**可选的 `auth_type` 字段**，用于显式声明提交的 token 类型（JSON / 查询参数 / 表单均可，后端依次识别）：
+
+| `auth_type` 值 | 含义 |
+|---------------|------|
+| 缺省 / `remember` | **默认**。按 Remember Token 处理：查数据库 `remember_token` 定位当前用户 |
+| `manage` | 按 Manage Token 处理：**必须**提交 `config.yaml > manage.token` 对应的值，且必须再提供 `uid` 或 `email` 指定目标用户 |
+
+> ⚠️ **重要**：后端**不再**通过"token 恰好等于 M-T"来自动升级为运维模式。未声明 `auth_type`（或声明 `remember`）时，即使 token 恰好等于 M-T，也一律按 Remember Token 走数据库校验。声明 `auth_type="manage"` 但 token 与配置 M-T 不符，或 `auth_type` 为其他未知值，后端直接拒绝（返回 `Invalid auth type or token` / `无效的鉴权类型或token`）。
 
 ---
 
@@ -127,11 +138,11 @@
 
 **所需 Token：** 无（WebUI 路径）；**Manage Token**（M.T. 路径，WinnerProxy 使用）
 
-`POST /register` 内部按 `remember_token` 字段是否匹配 `config.yaml > manage.token` 分流到两条路径：
-- **WebUI 路径**：玩家在 WebUI 表单注册，开 captcha 时需 `captcha_token`+`captcha_code`。
-- **M.T. 路径**：WinnerProxy 代注册 / 绑定未在 HA 注册的 Mojang 正版玩家，跳过 captcha 与邮箱格式校验，详见 `references/HA-ROADMAP.md` §3。
+`POST /register` 按声明的 `auth_type` 分流到两条路径：
+- **WebUI 路径**（默认，未声明或 `auth_type=remember`）：玩家在 WebUI 表单注册，开 captcha 时需 `captcha_token`+`captcha_code`。
+- **M.T. 路径**（`auth_type="manage"` + 配置的 Manage Token）：WinnerProxy 代注册 / 绑定未在 HA 注册的 Mojang 正版玩家，跳过 captcha 与邮箱格式校验，详见 `references/HA-ROADMAP.md` §3。
 
-> M.T. token 错误时静默降级为 WebUI 路径（按 §3.1 约定不报错）。
+> 未声明 `auth_type` 时一律走 WebUI 路径；声明了 `auth_type="manage"` 但 token 与配置 M-T 不符（或未知 `auth_type` 值）返回 `400 Invalid auth type or token`。
 
 #### WebUI 路径请求体
 
@@ -159,7 +170,8 @@
   "username": "PlayerOne",
   "password": "<任意 ≥ 6 字符>",
   "mojang_uuid": "f7c77d999f154a66a87dc4a51ef30d19",
-  "remember_token": "<Manage Token>"
+  "remember_token": "<Manage Token>",
+  "auth_type": "manage"
 }
 ```
 
@@ -171,6 +183,7 @@
 | `captcha_token`/`captcha_code` | 开启 captcha 时必填 | 忽略 | |
 | `mojang_uuid` | 忽略 | 32 位小写 hex，可选 | 不传走 WebUI 同等流程（cbh=1）；传了走代注册/绑定 |
 | `remember_token` | 忽略 | **必填**，M.T. | |
+| `auth_type` | 忽略（缺省即 remember） | **必填** `"manage"` | 声明 token 类型 |
 
 #### 成功响应
 
@@ -192,6 +205,7 @@ M.T. 路径**新建代注册**用户时（M.T. + 新 username + mojang_uuid）�
 
 | HTTP | message / error | 触发场景 | 路径 |
 |------|----------------|----------|------|
+| 400 | `Invalid auth type or token` | `auth_type` 为未知值，或声明 `manage` 但 token 与配置 M-T 不符 | 通用 |
 | 400 | `Invalid or expired captcha` | 验证码错误或已使用 | WebUI（开启 captcha 时）|
 | 400 | `Invalid email` | 邮箱格式不合法 | WebUI |
 | 400 | `Username too short` | 用户名 < 3 字符 | 通用 |
@@ -358,6 +372,11 @@ T5  失败：后端返回 400 "Invalid or expired captcha" → 前端应重新�
 
 > `uid` 与 `email` 联合校验（任意一个匹配登录用户即可，建议同时传）
 
+**运维代开**（M.T. 需额外声明 `auth_type` + 指定目标用户，玩家模式下 `uid`/`email` 被忽略）：
+```json
+{ "remember_token": "<Manage Token>", "uid": "42", "auth_type": "manage" }
+```
+
 **成功响应：**
 ```json
 {
@@ -388,12 +407,12 @@ T5  失败：后端返回 400 "Invalid or expired captcha" → 前端应重新�
 
 **请求体（运维代开，用 uid）：**
 ```json
-{ "remember_token": "<Manage Token>", "uid": "42" }
+{ "remember_token": "<Manage Token>", "uid": "42", "auth_type": "manage" }
 ```
 
 或（用 email）：
 ```json
-{ "remember_token": "<Manage Token>", "email": "user@example.com" }
+{ "remember_token": "<Manage Token>", "email": "user@example.com", "auth_type": "manage" }
 ```
 
 **成功响应：**
@@ -402,6 +421,7 @@ T5  失败：后端返回 400 "Invalid or expired captcha" → 前端应重新�
 ```
 
 **失败响应：**
+- `无效的鉴权类型或token` — 声明了 `auth_type="manage"` 但 token 与配置 M-T 不符（或未知 `auth_type` 值）
 - `未登录或登录已过期` — Remember Token 缺失
 - `Manage Token 需要指定 uid 或 email` — M.T. 路径下未指定目标用户
 - `用户不存在或token无效` — Token 无效或对应用户不存在
@@ -452,6 +472,8 @@ T5  失败：后端返回 400 "Invalid or expired captcha" → 前端应重新�
 { "email": "user@example.com", "remtoken": "<Remember Token>" }
 ```
 
+> 运维代开（M.T.）：`{ "email": "<目标邮箱>", "remtoken": "<Manage Token>", "auth_type": "manage" }`
+
 **成功响应：**
 ```json
 { "success": true, "totpkey": "<TOTP Secret，Base32 字符串>" }
@@ -494,6 +516,8 @@ T5  失败：后端返回 400 "Invalid or expired captcha" → 前端应重新�
 { "uid": "1", "rt": "<Remember Token>" }
 ```
 
+> 运维代开（M.T.）：`{ "uid": "<目标 uid>", "rt": "<Manage Token>", "auth_type": "manage" }`
+
 **成功响应：**
 ```json
 { "success": true, "enabled": 1 }
@@ -513,6 +537,8 @@ T5  失败：后端返回 400 "Invalid or expired captcha" → 前端应重新�
 { "remember_token": "<Remember Token>", "username": "NewName" }
 ```
 
+> 运维代开（M.T.）：`{ "remember_token": "<Manage Token>", "uid": "42", "auth_type": "manage", "username": "NewName" }`（uid/email 二选一）
+
 **成功响应：**
 ```json
 { "success": true, "message": "Username updated" }
@@ -527,6 +553,8 @@ T5  失败：后端返回 400 "Invalid or expired captcha" → 前端应重新�
 { "remember_token": "<Remember Token>", "profile_id": "<uuid>", "name": "NewPlayerName" }
 ```
 
+> 运维代开（M.T.）：同上加 `"auth_type": "manage"` 并指定 `uid` 或 `email`（二选一）。
+
 **成功响应：**
 ```json
 { "success": true, "message": "Profile name updated" }
@@ -537,6 +565,8 @@ T5  失败：后端返回 400 "Invalid or expired captcha" → 前端应重新�
 ## 9. 纹理管理
 
 > 三个端点均使用 **Remember Token** 鉴权。纹理 URL 由后端托管，前端只需展示。
+>
+> 运维代开（M.T.）同样支持：请求中加 `"auth_type": "manage"` 并指定 `uid` 或 `email`（二选一），即可代操作指定用户的纹理。
 
 ### POST /texture/upload
 

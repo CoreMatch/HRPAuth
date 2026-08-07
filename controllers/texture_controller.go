@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
@@ -31,6 +30,7 @@ type UploadTextureRequest struct {
 	ProfileID     string `json:"profile_id"`
 	TextureType   string `json:"texture_type"`
 	Model         string `json:"model"`
+	AuthType      string `json:"auth_type"`
 }
 
 func (tc *TextureController) UploadTexture(c *gin.Context) {
@@ -40,6 +40,7 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 	model := ""
 	uid := ""
 	email := ""
+	authType := ""
 
 	contentType := c.ContentType()
 	if strings.Contains(contentType, "application/json") {
@@ -51,6 +52,7 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 			model = req.Model
 			uid = req.UID
 			email = req.Email
+			authType = req.AuthType
 		}
 	}
 
@@ -108,7 +110,14 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 		return
 	}
 
-	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	isManage, authOK := isManageRequest(c, token, authType)
+	if !authOK {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的鉴权类型或token",
+		})
+		return
+	}
 	if isManage && uid == "" && email == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -210,6 +219,7 @@ type DeleteTextureRequest struct {
 	Email         string `json:"email"`
 	ProfileID     string `json:"profile_id"`
 	TextureType   string `json:"texture_type"`
+	AuthType      string `json:"auth_type"`
 }
 
 func (tc *TextureController) DeleteTexture(c *gin.Context) {
@@ -218,6 +228,7 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 	textureType := ""
 	uid := ""
 	email := ""
+	authType := ""
 
 	contentType := c.ContentType()
 	if strings.Contains(contentType, "application/json") {
@@ -228,6 +239,7 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 			textureType = req.TextureType
 			uid = req.UID
 			email = req.Email
+			authType = req.AuthType
 		}
 	}
 
@@ -279,7 +291,14 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 		return
 	}
 
-	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	isManage, authOK := isManageRequest(c, token, authType)
+	if !authOK {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的鉴权类型或token",
+		})
+		return
+	}
 	if isManage && uid == "" && email == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,
@@ -352,6 +371,7 @@ type GetTextureRequest struct {
 	UID           string `json:"uid"`
 	Email         string `json:"email"`
 	ProfileID     string `json:"profile_id"`
+	AuthType      string `json:"auth_type"`
 }
 
 type TextureResponse struct {
@@ -365,6 +385,7 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 	profileID := ""
 	uid := ""
 	email := ""
+	authType := ""
 
 	contentType := c.ContentType()
 	if strings.Contains(contentType, "application/json") {
@@ -374,6 +395,7 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 			profileID = req.ProfileID
 			uid = req.UID
 			email = req.Email
+			authType = req.AuthType
 		}
 	}
 
@@ -411,7 +433,14 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 		return
 	}
 
-	isManage := config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
+	isManage, authOK := isManageRequest(c, token, authType)
+	if !authOK {
+		c.JSON(http.StatusOK, gin.H{
+			"success": false,
+			"message": "无效的鉴权类型或token",
+		})
+		return
+	}
 	if isManage && uid == "" && email == "" {
 		c.JSON(http.StatusOK, gin.H{
 			"success": false,

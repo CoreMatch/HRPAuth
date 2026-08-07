@@ -20,7 +20,7 @@
 | Token 名称 | 字段名（请求/响应） | 长度 | 用途 | 颁发端点（响应字段） | 使用端点（请求字段） |
 |-----------|--------------------|------|------|--------------------|--------------------|
 | **Remember Token**（本站会话令牌） | `remember_token` / `remtoken` / `rt` / 登录响应的 `token` | 32 字节随机串 | 本站业务系统的登录会话凭证 | `POST /login`（响应 `token`） | `GET /logout`、`POST /user`、`POST /change-username`、`POST /change-profile-name`、`POST /totp/setup`、`POST /totp/hasbeenenabled`；`POST /totp/verify` 成功后会在响应中回传该 token（`rt` 字段） |
-| **Manage Token（M-T）**（运维超级 remtoken） | 任意 remtoken 字段名 | 32 字节随机串（`utils.GenerateRandomToken(32)`） | 由 `config.yaml` 中 `manage.token` 持久化；可作为任意用户的 remtoken，但调用方必须额外提供 `uid` 或 `email` 指定目标用户 | 首次启动时由 [`controllers/startup_controller.go`](../controllers/startup_controller.go) 的 `generateManageToken` 随机生成 | 与 Remember Token 相同的所有站点端点；`isManage` 分支会跳过 `WHERE remember_token=?` 校验 |
+| **Manage Token（M-T）**（运维超级 remtoken） | 任意 remtoken 字段名 | 32 字节随机串（`utils.GenerateRandomToken(32)`） | 由 `config.yaml` 中 `manage.token` 持久化；可作为任意用户的 remtoken，但调用方必须额外声明 `auth_type: "manage"` 并提供 `uid` 或 `email` 指定目标用户 | 首次启动时由 [`controllers/startup_controller.go`](../controllers/startup_controller.go) 的 `generateManageToken` 随机生成 | 与 Remember Token 相同的所有站点端点；`isManage` 分支会跳过 `WHERE remember_token=?` 校验 |
 | **Yggdrasil Access Token** | `accessToken` | 随机串（`utils.GenerateAccessToken`） | Yggdrasil API 的访问令牌，由 Minecraft 客户端在加入服务器时携带 | `POST /authserver/authenticate`、`POST /authserver/refresh` | `POST /authserver/refresh`、`POST /authserver/validate`、`POST /authserver/invalidate`、`POST /sessionserver/session/minecraft/join`、`PUT/DELETE /api/user/profile/:uuid/:textureType`（通过 `Authorization: Bearer <accessToken>` 请求头传递） |
 | **Yggdrasil Client Token** | `clientToken` | 随机串（`utils.GenerateClientToken`，可由客户端自传） | Yggdrasil API 的客户端标识，必须与 AccessToken 配对使用 | `POST /authserver/authenticate`（请求可传 / 响应回传） | `POST /authserver/authenticate`、`POST /authserver/refresh`、`POST /authserver/validate`、`POST /authserver/invalidate` |
 | **Email Verification Code**（邮箱验证码） | `code` | 6 位数字 | 校验用户邮箱所有权，存于 Redis，10 分钟有效 | `POST /email-verification`（`action=send-verification-code`，通过邮件发送） | `POST /email-verification`（`action=verify-code`） |
@@ -33,7 +33,18 @@
 > 1. `Remember Token`（本站）≠ `Yggdrasil Access Token`（Minecraft）。两者完全独立。
 > 2. `remember_token` / `remtoken` / `rt` 是同一类 Token 的不同字段名，含义相同。
 > 3. 邮箱验证码（`code`）和 TOTP Passcode（`passcode`）都是 6 位数字，但用途完全不同。
-> 4. **Manage Token（M-T）** 存于 `config.yaml`，**不是用户级 remember_token**。使用 M-T 调任何需要 remtoken 的端点时，**必须**额外传 `uid` 或 `email` 指定目标用户；否则后端返回 `Manage Token 需要指定 uid 或 email`。
+> 4. **Manage Token（M-T）** 存于 `config.yaml`，**不是用户级 remember_token**。使用 M-T 调任何需要 remtoken 的端点时，**必须**额外声明 `auth_type: "manage"` 并传 `uid` 或 `email` 指定目标用户；否则后端返回 `Manage Token 需要指定 uid 或 email`。
+
+### auth_type 声明（Token 类型判别）
+
+每个接受 remtoken 的站点端点都支持**可选的 `auth_type` 字段**（JSON / 查询参数 / 表单均可，按 `remember_token` 相同的收集顺序识别）。它显式声明提交的 token 归属：
+
+| `auth_type` 值 | 后端处理 |
+|---------------|---------|
+| 缺省 / `remember` | **默认**。按 Remember Token 处理：`WHERE remember_token = ?` 查库定位用户 |
+| `manage` | 按 Manage Token 处理：token 必须等于 `config.AppConfig.Manage.Token`，且必须再提供 `uid` 或 `email` 指定目标用户 |
+
+判别逻辑集中在 [`controllers/auth_controller.go`](../controllers/auth_controller.go) 的 `isManageRequest`：声明 `manage` 且 token 与配置 M-T 相符 → `isManage=true`；否则（未知值，或 `manage` 但 token 不符）→ 直接拒绝。**后端不再**通过"token 恰好等于 M-T"自动升级为运维模式——未声明 `auth_type` 时，即使 token 恰好等于 M-T，也一律走 remember-token 数据库校验（查无此行则报"用户不存在或token无效"）。
 
 ---
 

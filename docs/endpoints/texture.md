@@ -13,6 +13,8 @@
 | [POST /texture/get](#post-textureget) | `POST` | **Remember Token** |
 
 > 三个端点所需 Token 均为 **Remember Token**（通过请求体 / 表单 / 查询参数中的 `remember_token` 字段传递）。
+>
+> **`auth_type` 声明**：可选，缺省即 `remember`。三个端点同样支持 **M.T. 运维代开**：`remember_token` 换成 M-T 并传 `auth_type: "manage"`，同时提供 `uid` 或 `email`（二选一）指定目标用户。后端**不再**因 token 恰好等于 M-T 而自动升级为运维模式。
 
 ---
 
@@ -22,7 +24,7 @@
 
 ### 鉴权
 
-**Remember Token**
+**Remember Token**（或 **Manage Token** + `auth_type: "manage"` + uid/email）
 
 ### 请求格式
 
@@ -30,10 +32,13 @@
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `remember_token` | string | 是 | 用户登录令牌 |
+| `remember_token` | string | 是 | 用户登录令牌（或 M-T） |
 | `profile_id` | string | 否 | 角色 ID，缺省时取用户的第一个角色 |
 | `texture_type` | string | 是 | `skin`（皮肤）或 `cape`（披风） |
 | `model` | string | 否 | 皮肤模型，`default`（默认）或 `slim`（纤细），仅 `texture_type=skin` 有效 |
+| `uid` | string | M.T. 必填，玩家模式忽略 | 目标用户 UID（与 `email` 二选一） |
+| `email` | string | M.T. 与 `uid` 二选一，玩家模式忽略 | 目标用户邮箱 |
+| `auth_type` | string | M.T. 必填 `"manage"` | 声明 token 类型，缺省 `remember` |
 | `file` | file | 是 | PNG 格式纹理文件 |
 
 ### 请求示例（curl）
@@ -83,7 +88,7 @@ curl -X POST http://localhost:8080/texture/upload \
 
 ### 鉴权
 
-**Remember Token**
+**Remember Token**（或 **Manage Token** + `auth_type: "manage"` + uid/email）
 
 ### 请求体
 
@@ -97,9 +102,12 @@ curl -X POST http://localhost:8080/texture/upload \
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `remember_token` | string | 是 | 用户登录令牌 |
+| `remember_token` | string | 是 | 用户登录令牌（或 M-T） |
 | `profile_id` | string | 否 | 角色 ID，缺省时取用户的第一个角色 |
 | `texture_type` | string | 是 | `skin`（皮肤）或 `cape`（披风） |
+| `uid` | string | M.T. 必填，玩家模式忽略 | 目标用户 UID（与 `email` 二选一） |
+| `email` | string | M.T. 与 `uid` 二选一，玩家模式忽略 | 目标用户邮箱 |
+| `auth_type` | string | M.T. 必填 `"manage"` | 声明 token 类型，缺省 `remember` |
 
 ### 成功响应
 
@@ -130,7 +138,7 @@ curl -X POST http://localhost:8080/texture/upload \
 
 ### 鉴权
 
-**Remember Token**
+**Remember Token**（或 **Manage Token** + `auth_type: "manage"` + uid/email）
 
 ### 请求体
 
@@ -143,8 +151,11 @@ curl -X POST http://localhost:8080/texture/upload \
 
 | 参数 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `remember_token` | string | 是 | 用户登录令牌 |
+| `remember_token` | string | 是 | 用户登录令牌（或 M-T） |
 | `profile_id` | string | 否 | 角色 ID，缺省时取用户的第一个角色 |
+| `uid` | string | M.T. 必填，玩家模式忽略 | 目标用户 UID（与 `email` 二选一） |
+| `email` | string | M.T. 与 `uid` 二选一，玩家模式忽略 | 目标用户邮箱 |
+| `auth_type` | string | M.T. 必填 `"manage"` | 声明 token 类型，缺省 `remember` |
 
 ### 成功响应
 

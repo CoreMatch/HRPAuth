@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/utils"
@@ -20,6 +19,7 @@ func NewTOTPController() *TOTPController {
 type SetupTOTPRequest struct {
 	Email    string `json:"email"`
 	RemToken string `json:"remtoken"`
+	AuthType string `json:"auth_type"`
 }
 
 type VerifyTOTPRequest struct {
@@ -28,8 +28,9 @@ type VerifyTOTPRequest struct {
 }
 
 type HasBeenEnabledRequest struct {
-	UID string `json:"uid"`
-	RT  string `json:"rt"`
+	UID      string `json:"uid"`
+	RT       string `json:"rt"`
+	AuthType string `json:"auth_type"`
 }
 
 func (tc *TOTPController) Generate(c *gin.Context) {
@@ -72,9 +73,17 @@ func (tc *TOTPController) SetupTOTP(c *gin.Context) {
 		return
 	}
 
-	// M-T is treated as a remtoken: when it matches, the remember_token check
-	// is skipped so the operator can configure TOTP for any user by email.
-	isManage := config.AppConfig.Manage.Token != "" && remToken == config.AppConfig.Manage.Token
+	// M-T is treated as a remtoken: when the caller declares auth_type="manage"
+	// with the configured M-T, the remember_token check is skipped so the
+	// operator can configure TOTP for any user by email.
+	isManage, authOK := isManageRequest(c, remToken, req.AuthType)
+	if !authOK {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Invalid auth type or token",
+		})
+		return
+	}
 
 	query := database.DB.Where("email = ?", email)
 	if !isManage {
@@ -192,9 +201,17 @@ func (tc *TOTPController) HasBeenEnabled(c *gin.Context) {
 		return
 	}
 
-	// M-T is treated as a remtoken: when it matches, the remember_token check
-	// is skipped so the operator can query any user by uid.
-	isManage := config.AppConfig.Manage.Token != "" && rt == config.AppConfig.Manage.Token
+	// M-T is treated as a remtoken: when the caller declares auth_type="manage"
+	// with the configured M-T, the remember_token check is skipped so the
+	// operator can query any user by uid.
+	isManage, authOK := isManageRequest(c, rt, req.AuthType)
+	if !authOK {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"success": false,
+			"message": "Invalid auth type or token",
+		})
+		return
+	}
 
 	query := database.DB.Where("uid = ?", uid)
 	if !isManage {

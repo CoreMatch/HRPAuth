@@ -10,6 +10,8 @@
 > 详细实现： [`controllers/user_profile_controller.go`](../../controllers/user_profile_controller.go)
 
 > 两个端点所需 Token 均为 **Remember Token**（通过请求体 / 表单 / 查询参数中的 `remember_token` 字段传递）。
+>
+> **`auth_type` 声明**：可选，缺省即 `remember`。两个端点同样支持 **M.T. 运维代开**：`remember_token` 换成 M-T 并传 `"auth_type": "manage"`，同时提供 `uid` 或 `email`（二选一）指定目标用户。后端**不再**因 token 恰好等于 M-T 而自动升级为运维模式。
 
 ---
 
@@ -19,7 +21,7 @@
 
 ### 鉴权
 
-**Remember Token**
+**Remember Token**（或 **Manage Token** + `auth_type: "manage"` + uid/email）
 
 ### 请求体
 
@@ -30,10 +32,19 @@
 }
 ```
 
+运维代开（M.T.）：
+
+```json
+{ "remember_token": "<Manage Token>", "uid": "42", "auth_type": "manage", "username": "NewName" }
+```
+
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `remember_token` | string | 是 | Remember Token |
+| `remember_token` | string | 是 | Remember Token 或 Manage Token |
 | `username` | string | 是 | 新用户名（≥ 3 字符，需唯一） |
+| `uid` | string | M.T. 必填，玩家模式忽略 | 目标用户 UID（与 `email` 二选一） |
+| `email` | string | M.T. 与 `uid` 二选一，玩家模式忽略 | 目标用户邮箱 |
+| `auth_type` | string | M.T. 必填 `"manage"` | 声明 token 类型，缺省 `remember` |
 
 ### 成功响应
 
@@ -60,7 +71,7 @@
 
 ### 鉴权
 
-**Remember Token**
+**Remember Token**（或 **Manage Token** + `auth_type: "manage"` + uid/email）
 
 ### 请求体
 
@@ -74,9 +85,12 @@
 
 | 字段 | 类型 | 必填 | 说明 |
 |------|------|------|------|
-| `remember_token` | string | 是 | Remember Token |
+| `remember_token` | string | 是 | Remember Token 或 Manage Token |
 | `profile_id` | string | 是 | 要修改的角色 ID（UUID） |
 | `name` | string | 是 | 新的 Minecraft 角色名 |
+| `uid` | string | M.T. 必填，玩家模式忽略 | 目标用户 UID（与 `email` 二选一） |
+| `email` | string | M.T. 与 `uid` 二选一，玩家模式忽略 | 目标用户邮箱 |
+| `auth_type` | string | M.T. 必填 `"manage"` | 声明 token 类型，缺省 `remember` |
 
 ### 成功响应
 

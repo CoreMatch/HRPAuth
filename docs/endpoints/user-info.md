@@ -30,6 +30,8 @@
 2. 查询参数 `?remember_token=xxx`
 3. 表单字段
 
+> **`auth_type` 声明**：可选的 `auth_type` 字段（JSON / 查询参数 / 表单均可）用于显式声明 token 类型。缺省或 `remember` → 按 Remember Token 走数据库校验；`manage` → 按 Manage Token 处理（token 必须等于 `config.yaml > manage.token`，且必须提供 `uid` 或 `email`）。后端**不再**因 token 恰好等于 M-T 而自动升级为运维模式。
+
 ### 请求体
 
 ```json
@@ -45,6 +47,15 @@
 | `remember_token` | string | 是 | Remember Token |
 | `uid` | string | 否 | 用户 UID（与 `email` 联合校验，**任一匹配登录用户即可**，建议同时传） |
 | `email` | string | 否 | 用户邮箱（同上） |
+| `auth_type` | string | 否 | `remember`（缺省）/ `manage`；`manage` 时需将 `remember_token` 换成 M-T 并传 `uid` 或 `email` |
+
+**运维代开**（用 M-T + uid 或 email，`auth_type` 必填）：
+
+```json
+{ "remember_token": "<Manage Token>", "uid": "42", "auth_type": "manage" }
+```
+
+玩家模式下 `uid` / `email` 字段被忽略，仅按 `remember_token` 定位自己。
 
 ### 成功响应
 
@@ -144,7 +155,7 @@
 | 字段 | 值 |
 |------|---|
 | 方法 | `POST` |
-| 鉴权 | **Remember Token**（玩家自开）或 **Manage Token**（运维代开，需附加 `uid` 或 `email`）|
+| 鉴权 | **Remember Token**（玩家自开）或 **Manage Token**（运维代开，需声明 `auth_type: "manage"` 并附加 `uid` 或 `email`）|
 | 幂等 | 是（已开启时返回 200）|
 
 ### Remember Token 传递方式
@@ -154,6 +165,8 @@
 1. 请求体 JSON 字段 `remember_token`
 2. 查询参数 `?remember_token=xxx`
 3. 表单字段
+
+> **`auth_type` 声明**：可选，缺省即 `remember`。M.T. 运维代开必须传 `auth_type: "manage"`（`remember_token` 换成 M-T）。后端**不再**因 token 恰好等于 M-T 而自动升级。
 
 ### 请求体
 
@@ -166,13 +179,13 @@
 **运维代开**（用 Manage Token + uid）：
 
 ```json
-{ "remember_token": "<Manage Token>", "uid": "42" }
+{ "remember_token": "<Manage Token>", "uid": "42", "auth_type": "manage" }
 ```
 
 或（用 Manage Token + email）：
 
 ```json
-{ "remember_token": "<Manage Token>", "email": "user@example.com" }
+{ "remember_token": "<Manage Token>", "email": "user@example.com", "auth_type": "manage" }
 ```
 
 | 字段 | 类型 | 必填 | 说明 |
@@ -180,6 +193,7 @@
 | `remember_token` | string | 是 | Remember Token 或 Manage Token |
 | `uid` | string | M.T. 必填，玩家模式忽略 | 目标用户 UID |
 | `email` | string | M.T. 与 `uid` 二选一，玩家模式忽略 | 目标用户邮箱 |
+| `auth_type` | string | M.T. 必填 `"manage"` | 声明 token 类型，缺省 `remember` |
 
 > 玩家模式下 `uid` / `email` 字段被忽略，仅按 `remember_token` 定位自己。
 > 运维（M.T.）模式下 `uid` 与 `email` 必须二选一，否则 400。
@@ -200,6 +214,7 @@
 
 | HTTP | message | 触发场景 |
 |------|---------|----------|
+| 200 (业务失败) | `无效的鉴权类型或token` | 声明 `auth_type="manage"` 但 token 与配置 M-T 不符（或未知 `auth_type` 值） |
 | 200 (业务失败) | `未登录或登录已过期` | Remember Token 缺失 |
 | 200 (业务失败) | `Manage Token 需要指定 uid 或 email` | M.T. 路径下未指定目标用户 |
 | 200 (业务失败) | `用户不存在或token无效` | Token 无效或对应用户不存在 |
