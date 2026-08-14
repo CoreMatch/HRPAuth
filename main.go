@@ -65,6 +65,7 @@ func main() {
 	r := gin.Default()
 
 	r.Use(CORSMiddleware())
+	r.Use(controllers.RequestIDMiddleware())
 
 	authCtrl := controllers.NewAuthController()
 	userInfoCtrl := controllers.NewUserInfoController()
@@ -77,7 +78,7 @@ func main() {
 	captchaCtrl := controllers.NewCaptchaController()
 
 	r.GET("/status", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{
+		controllers := gin.H{
 			"status": "online",
 			"backend": gin.H{
 				"name":        config.AppConfig.Site.Name,
@@ -86,7 +87,14 @@ func main() {
 				"go_version":  "go1.26",
 				"server_time": time.Now().Format("2006-01-02 15:04:05"),
 			},
+		}
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
 			"message": "HRPAuth Backend is running.",
+			"data":    controllers,
+			"meta": gin.H{
+				"request_id": c.GetString("request_id"),
+			},
 		})
 	})
 
@@ -160,6 +168,11 @@ func main() {
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
 			"message": "Not Found",
+			"code":    "route_not_found",
+			"error":   "route_not_found",
+			"meta": gin.H{
+				"request_id": c.GetString("request_id"),
+			},
 		})
 	})
 

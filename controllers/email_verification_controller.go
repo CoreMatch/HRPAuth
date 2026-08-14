@@ -33,10 +33,7 @@ type EmailVerificationRequest struct {
 func (evc *EmailVerificationController) Handle(c *gin.Context) {
 	var req EmailVerificationRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request body",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
 		return
 	}
 
@@ -48,10 +45,7 @@ func (evc *EmailVerificationController) Handle(c *gin.Context) {
 	case "verify-code":
 		evc.verifyCode(c, req)
 	default:
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid action",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Invalid action")
 	}
 }
 
@@ -61,53 +55,34 @@ func (evc *EmailVerificationController) sendTestEmail(c *gin.Context, req EmailV
 	message := req.Message
 
 	if to == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Recipient email cannot be empty",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Recipient email cannot be empty")
 		return
 	}
 
 	if !isValidEmail(to) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid recipient email format",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid recipient email format")
 		return
 	}
 
 	if subject == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Email subject cannot be empty",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Email subject cannot be empty")
 		return
 	}
 
 	if message == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Email content cannot be empty",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Email content cannot be empty")
 		return
 	}
 
 	err := evc.emailService.SendMail(to, subject, message)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		respondError(c, http.StatusInternalServerError, CodeEmailSendFailed, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Email sent successfully",
-		"data": gin.H{
-			"to":      to,
-			"subject": subject,
-		},
+	respondOK(c, "Email sent successfully", gin.H{
+		"to":      to,
+		"subject": subject,
 	})
 }
 
@@ -115,29 +90,20 @@ func (evc *EmailVerificationController) sendVerificationCode(c *gin.Context, req
 	email := req.Email
 
 	if !isValidEmail(email) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid email",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
 		return
 	}
 
 	existingCode, found := evc.codeStore.Get(email)
 	if found && existingCode != "" {
-		c.JSON(http.StatusTooManyRequests, gin.H{
-			"success": false,
-			"message": "Verification code already sent, please wait",
-		})
+		respondError(c, http.StatusTooManyRequests, CodeVerificationCodeAlreadySent, "Verification code already sent, please wait")
 		return
 	}
 
 	code := evc.codeStore.GenerateCode()
 
 	if !evc.codeStore.Store(email, code) {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to store verification code",
-		})
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to store verification code")
 		return
 	}
 
@@ -147,17 +113,11 @@ func (evc *EmailVerificationController) sendVerificationCode(c *gin.Context, req
 	err := evc.emailService.SendMail(email, subject, message)
 	if err != nil {
 		evc.codeStore.Delete(email)
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		respondError(c, http.StatusInternalServerError, CodeEmailSendFailed, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Verification code sent successfully",
-	})
+	respondOK(c, "Verification code sent successfully", nil)
 }
 
 func (evc *EmailVerificationController) verifyCode(c *gin.Context, req EmailVerificationRequest) {
@@ -165,35 +125,23 @@ func (evc *EmailVerificationController) verifyCode(c *gin.Context, req EmailVeri
 	code := req.Code
 
 	if !isValidEmail(email) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid email",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
 		return
 	}
 
 	if code == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Verification code is required",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Verification code is required")
 		return
 	}
 
 	storedCode, found := evc.codeStore.Get(email)
 	if !found {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Verification code expired or not found",
-		})
+		respondError(c, http.StatusBadRequest, CodeVerificationCodeExpired, "Verification code expired or not found")
 		return
 	}
 
 	if code != storedCode {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid verification code",
-		})
+		respondError(c, http.StatusBadRequest, CodeVerificationCodeInvalid, "Invalid verification code")
 		return
 	}
 
@@ -204,23 +152,14 @@ func (evc *EmailVerificationController) verifyCode(c *gin.Context, req EmailVeri
 		Update("verified", true)
 
 	if result.Error != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to update verification status",
-		})
+		respondError(c, http.StatusInternalServerError, CodeVerificationStatusUpdateFailed, "Failed to update verification status")
 		return
 	}
 
 	if result.RowsAffected == 0 {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "User not found or already verified",
-		})
+		respondError(c, http.StatusNotFound, CodeUserNotFound, "User not found or already verified")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Verification successful",
-	})
+	respondOK(c, "Verification successful", nil)
 }

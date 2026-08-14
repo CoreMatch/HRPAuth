@@ -111,10 +111,7 @@ func isManageRequest(c *gin.Context, token, jsonAuthType string) (isManage, vali
 func (ac *AuthController) Login(c *gin.Context) {
 	var req LoginRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request body",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
 		return
 	}
 
@@ -122,28 +119,19 @@ func (ac *AuthController) Login(c *gin.Context) {
 	password := req.Password
 
 	if !isValidEmail(email) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid email",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
 		return
 	}
 
 	var user models.User
 	result := database.DB.Where("email = ?", email).First(&user)
 	if result.Error != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Email or password incorrect",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidCredentials, "Email or password incorrect")
 		return
 	}
 
 	if !utils.CheckPasswordHash(password, user.Password) {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Email or password incorrect",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidCredentials, "Email or password incorrect")
 		return
 	}
 
@@ -160,12 +148,10 @@ func (ac *AuthController) Login(c *gin.Context) {
 		totp = 1
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Login successful",
-		"token":   token,
-		"uid":     user.UID,
-		"totp":    totp,
+	respondOK(c, "Login successful", gin.H{
+		"token": token,
+		"uid":   user.UID,
+		"totp":  totp,
 	})
 }
 
@@ -187,10 +173,7 @@ func (ac *AuthController) Login(c *gin.Context) {
 func (ac *AuthController) Register(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request body",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
 		return
 	}
 
@@ -200,26 +183,17 @@ func (ac *AuthController) Register(c *gin.Context) {
 	// optional) registration, even if the token happens to equal the M-T.
 	isManage, authOK := isManageRequest(c, req.RememberToken, req.AuthType)
 	if !authOK {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid auth type or token",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidAuthTypeOrToken, "Invalid auth type or token")
 		return
 	}
 
 	// Username / password length always enforced.
 	if len(req.Username) < 3 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Username too short",
-		})
+		respondError(c, http.StatusBadRequest, CodeUsernameTooShort, "Username too short")
 		return
 	}
 	if len(req.Password) < 6 {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Password too short",
-		})
+		respondError(c, http.StatusBadRequest, CodePasswordTooShort, "Password too short")
 		return
 	}
 
@@ -227,10 +201,7 @@ func (ac *AuthController) Register(c *gin.Context) {
 	mojangUUID := strings.ToLower(strings.TrimSpace(req.MojangUUID))
 	if mojangUUID != "" {
 		if !isValidMojangUUID(mojangUUID) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"error":   "invalid_mojang_uuid",
-			})
+			respondError(c, http.StatusBadRequest, CodeInvalidMojangUUID, "Invalid mojang_uuid")
 			return
 		}
 	}
@@ -244,10 +215,7 @@ func (ac *AuthController) Register(c *gin.Context) {
 		// M.T. path skips strict email-format validation per §3.1.
 	} else {
 		if !isValidEmail(email) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "Invalid email",
-			})
+			respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
 			return
 		}
 	}
@@ -256,27 +224,18 @@ func (ac *AuthController) Register(c *gin.Context) {
 	if !isManage && config.AppConfig.Security.EnableCaptcha {
 		captchaService := services.NewCaptchaService()
 		if req.CaptchaToken == "" || req.CaptchaCode == "" {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "Invalid or expired captcha",
-			})
+			respondError(c, http.StatusBadRequest, CodeCaptchaInvalid, "Invalid or expired captcha")
 			return
 		}
 		if !captchaService.Verify(req.CaptchaToken, req.CaptchaCode) {
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"message": "Invalid or expired captcha",
-			})
+			respondError(c, http.StatusBadRequest, CodeCaptchaInvalid, "Invalid or expired captcha")
 			return
 		}
 	}
 
 	hash, err := utils.HashPassword(req.Password)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Password hashing failed",
-		})
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Password hashing failed")
 		return
 	}
 
@@ -292,18 +251,12 @@ func (ac *AuthController) Register(c *gin.Context) {
 	var count int64
 	database.DB.Model(&models.User{}).Where("email = ?", email).Count(&count)
 	if count > 0 {
-		c.JSON(http.StatusConflict, gin.H{
-			"success": false,
-			"message": "Email already registered",
-		})
+		respondError(c, http.StatusConflict, CodeEmailAlreadyRegistered, "Email already registered")
 		return
 	}
 	database.DB.Model(&models.User{}).Where("username = ?", req.Username).Count(&count)
 	if count > 0 {
-		c.JSON(http.StatusConflict, gin.H{
-			"success": false,
-			"message": "Username already taken",
-		})
+		respondError(c, http.StatusConflict, CodeUsernameAlreadyTaken, "Username already taken")
 		return
 	}
 
@@ -336,17 +289,12 @@ func (ac *AuthController) Register(c *gin.Context) {
 		return pErr
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to create user profile",
-		})
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to create user profile")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
+	respondOK(c, "Register successful", gin.H{
 		"uid":        user.UID,
-		"message":    "Register successful",
 		"profile_id": profile.ID,
 	})
 }
@@ -374,17 +322,12 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 			// 1.1 hit: idempotent return.
 			profile, pErr := authService.GetOrCreateProfileForUser(byMojang.UUID, byMojang.Username)
 			if pErr != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{
-					"success": false,
-					"message": "Failed to load profile",
-				})
+				respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to load profile")
 				return
 			}
 			cleanupTriggered = true
-			c.JSON(http.StatusOK, gin.H{
-				"success":    true,
+			respondOK(c, "Register successful", gin.H{
 				"uid":        byMojang.UID,
-				"message":    "Register successful",
 				"profile_id": profile.ID,
 			})
 			return
@@ -397,30 +340,22 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 		// Existing user.
 		if mojangUUID == "" {
 			// 2.d
-			c.JSON(http.StatusBadRequest, gin.H{
-				"success": false,
-				"error":   "mojang_uuid_required_for_existing_user",
-			})
+			respondError(c, http.StatusBadRequest, CodeMojangUUIDRequired, "mojang_uuid is required for existing user")
 			return
 		}
 		if byUsername.MojangUUID != nil && *byUsername.MojangUUID == mojangUUID {
 			// 2.b idempotent.
 			profile, _ := authService.GetOrCreateProfileForUser(byUsername.UUID, byUsername.Username)
 			cleanupTriggered = true
-			c.JSON(http.StatusOK, gin.H{
-				"success":    true,
+			respondOK(c, "Register successful", gin.H{
 				"uid":        byUsername.UID,
-				"message":    "Register successful",
 				"profile_id": profile.ID,
 			})
 			return
 		}
 		if byUsername.MojangUUID != nil && *byUsername.MojangUUID != mojangUUID {
 			// 2.c conflict.
-			c.JSON(http.StatusConflict, gin.H{
-				"success": false,
-				"error":   "username_already_bound",
-			})
+			respondError(c, http.StatusConflict, CodeUsernameAlreadyBound, "Username already bound")
 			return
 		}
 		// 2.a bind: user exists with no mojang_uuid; M.T. supplies one.
@@ -429,28 +364,20 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 		//   mbe=1 → bind: only set mojang_uuid + last_sign_at; preserve
 		//             password/email/cbh (the WebUI user's credentials are kept).
 		if !byUsername.MBE {
-			c.JSON(http.StatusConflict, gin.H{
-				"success": false,
-				"error":   "username_already_bound",
-			})
+			respondError(c, http.StatusConflict, CodeUsernameAlreadyBound, "Username already bound")
 			return
 		}
 		if err := database.DB.Model(&byUsername).Updates(map[string]interface{}{
 			"mojang_uuid":  mojangUUID,
 			"last_sign_at": now,
 		}).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{
-				"success": false,
-				"message": "Failed to bind mojang_uuid",
-			})
+			respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to bind mojang_uuid")
 			return
 		}
 		profile, _ := authService.GetOrCreateProfileForUser(byUsername.UUID, byUsername.Username)
 		cleanupTriggered = true
-		c.JSON(http.StatusOK, gin.H{
-			"success":    true,
+		respondOK(c, "Register successful", gin.H{
 			"uid":        byUsername.UID,
-			"message":    "Register successful",
 			"profile_id": profile.ID,
 		})
 		return
@@ -495,17 +422,12 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 		return pErr
 	})
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to create user",
-		})
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to create user")
 		return
 	}
 
 	resp := gin.H{
-		"success":    true,
 		"uid":        user.UID,
-		"message":    "Register successful",
 		"profile_id": profile.ID,
 	}
 	if !user.CBH {
@@ -513,7 +435,7 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 		resp["cbh"] = 0
 	}
 	cleanupTriggered = true
-	c.JSON(http.StatusOK, resp)
+	respondOK(c, "Register successful", resp)
 }
 
 func (ac *AuthController) Logout(c *gin.Context) {
@@ -540,10 +462,7 @@ func (ac *AuthController) Logout(c *gin.Context) {
 			Update("remember_token", nil)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Logout successful",
-	})
+	respondOK(c, "Logout successful", nil)
 }
 
 // LoginByMT handles POST /loginbymt. It issues a remember_token for a user
@@ -551,19 +470,13 @@ func (ac *AuthController) Logout(c *gin.Context) {
 func (ac *AuthController) LoginByMT(c *gin.Context) {
 	var req LoginByMTRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request body",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
 		return
 	}
 
 	// Validate Management Token (M-T).
 	if config.AppConfig.Manage.Token == "" || req.ManageToken != config.AppConfig.Manage.Token {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid management token",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidManageToken, "Invalid management token")
 		return
 	}
 
@@ -574,18 +487,12 @@ func (ac *AuthController) LoginByMT(c *gin.Context) {
 	} else if req.Email != "" {
 		query = query.Where("email = ?", req.Email)
 	} else {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "UID or Email is required",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "UID or Email is required")
 		return
 	}
 
 	if err := query.First(&user).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "User not found",
-		})
+		respondError(c, http.StatusNotFound, CodeUserNotFound, "User not found")
 		return
 	}
 
@@ -597,10 +504,7 @@ func (ac *AuthController) LoginByMT(c *gin.Context) {
 		"remember_token": token,
 		"last_sign_at":   now,
 	}).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to update token",
-		})
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to update token")
 		return
 	}
 
@@ -609,12 +513,10 @@ func (ac *AuthController) LoginByMT(c *gin.Context) {
 		totp = 1
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Login successful",
-		"token":   token,
-		"uid":     user.UID,
-		"email":   user.Email,
-		"totp":    totp,
+	respondOK(c, "Login successful", gin.H{
+		"token": token,
+		"uid":   user.UID,
+		"email": user.Email,
+		"totp":  totp,
 	})
 }

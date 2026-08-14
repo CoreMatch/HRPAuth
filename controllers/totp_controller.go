@@ -36,21 +36,20 @@ type HasBeenEnabledRequest struct {
 func (tc *TOTPController) Generate(c *gin.Context) {
 	secret := c.Query("secret")
 	if secret == "" {
-		c.String(http.StatusBadRequest, "Missing secret")
+		respondError(c, http.StatusBadRequest, CodeTOTPSecretRequired, "Missing secret")
 		return
 	}
 
 	otp := utils.GenerateTOTP(secret, 6, 30)
-	c.String(http.StatusOK, otp)
+	respondOK(c, "TOTP generated successfully", gin.H{
+		"otp": otp,
+	})
 }
 
 func (tc *TOTPController) SetupTOTP(c *gin.Context) {
 	var req SetupTOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request body",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
 		return
 	}
 
@@ -58,18 +57,12 @@ func (tc *TOTPController) SetupTOTP(c *gin.Context) {
 	remToken := req.RemToken
 
 	if email == "" || remToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Missing email or remtoken",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing email or remtoken")
 		return
 	}
 
 	if !isValidEmail(email) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid email",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
 		return
 	}
 
@@ -78,10 +71,7 @@ func (tc *TOTPController) SetupTOTP(c *gin.Context) {
 	// operator can configure TOTP for any user by email.
 	isManage, authOK := isManageRequest(c, remToken, req.AuthType)
 	if !authOK {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid auth type or token",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "Invalid auth type or token")
 		return
 	}
 
@@ -93,18 +83,14 @@ func (tc *TOTPController) SetupTOTP(c *gin.Context) {
 	var user models.User
 	result := query.First(&user)
 	if result.Error != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid email or remtoken",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidCredentials, "Invalid email or remtoken")
 		return
 	}
 
 	secret := utils.GenerateTOTPSecret(32)
 	database.DB.Model(&user).Update("totp", secret)
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+	respondOK(c, "TOTP configured successfully", gin.H{
 		"totpkey": secret,
 	})
 }
@@ -112,10 +98,7 @@ func (tc *TOTPController) SetupTOTP(c *gin.Context) {
 func (tc *TOTPController) VerifyTOTP(c *gin.Context) {
 	var req VerifyTOTPRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request body",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
 		return
 	}
 
@@ -123,28 +106,19 @@ func (tc *TOTPController) VerifyTOTP(c *gin.Context) {
 	passcode := req.Passcode
 
 	if email == "" || passcode == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Missing email or passcode",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing email or passcode")
 		return
 	}
 
 	if !isValidEmail(email) {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid email",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
 		return
 	}
 
 	var user models.User
 	result := database.DB.Where("email = ?", email).First(&user)
 	if result.Error != nil || user.TOTP == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "User not found or TOTP not configured",
-		})
+		respondError(c, http.StatusUnauthorized, CodeTOTPNotConfigured, "User not found or TOTP not configured")
 		return
 	}
 
@@ -159,10 +133,7 @@ func (tc *TOTPController) VerifyTOTP(c *gin.Context) {
 		otpPrev := utils.GenerateTOTPAtCounter(secret, counterPrev, 6)
 
 		if passcode != otpPrev {
-			c.JSON(http.StatusUnauthorized, gin.H{
-				"success": false,
-				"message": "Invalid passcode",
-			})
+			respondError(c, http.StatusUnauthorized, CodePasscodeInvalid, "Invalid passcode")
 			return
 		}
 	}
@@ -173,20 +144,16 @@ func (tc *TOTPController) VerifyTOTP(c *gin.Context) {
 		database.DB.Model(&user).Update("remember_token", rt)
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"email":   email,
-		"rt":      rt,
+	respondOK(c, "TOTP verified successfully", gin.H{
+		"email": email,
+		"rt":    rt,
 	})
 }
 
 func (tc *TOTPController) HasBeenEnabled(c *gin.Context) {
 	var req HasBeenEnabledRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Invalid request body",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
 		return
 	}
 
@@ -194,10 +161,7 @@ func (tc *TOTPController) HasBeenEnabled(c *gin.Context) {
 	rt := req.RT
 
 	if uid == "" || rt == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Missing uid or rt",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing uid or rt")
 		return
 	}
 
@@ -206,10 +170,7 @@ func (tc *TOTPController) HasBeenEnabled(c *gin.Context) {
 	// operator can query any user by uid.
 	isManage, authOK := isManageRequest(c, rt, req.AuthType)
 	if !authOK {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid auth type or token",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "Invalid auth type or token")
 		return
 	}
 
@@ -221,10 +182,7 @@ func (tc *TOTPController) HasBeenEnabled(c *gin.Context) {
 	var user models.User
 	result := query.First(&user)
 	if result.Error != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "Invalid uid or rt",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "Invalid uid or rt")
 		return
 	}
 
@@ -233,8 +191,7 @@ func (tc *TOTPController) HasBeenEnabled(c *gin.Context) {
 		enabled = 1
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
+	respondOK(c, "TOTP status retrieved", gin.H{
 		"enabled": enabled,
 	})
 }

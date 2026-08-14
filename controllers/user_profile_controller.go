@@ -75,51 +75,33 @@ func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
 	}
 
 	if token == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "未登录或登录已过期",
-		})
+		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
 		return
 	}
 
 	if newUsername == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "请提供新用户名",
-		})
+		respondError(c, http.StatusBadRequest, CodeUsernameInvalid, "请提供新用户名")
 		return
 	}
 
 	if len(newUsername) < 3 || len(newUsername) > 16 {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户名长度必须在3-16个字符之间",
-		})
+		respondError(c, http.StatusBadRequest, CodeUsernameInvalid, "用户名长度必须在3-16个字符之间")
 		return
 	}
 
 	matched, _ := regexp.MatchString(`^[a-zA-Z0-9_]+$`, newUsername)
 	if !matched {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户名只能包含字母、数字和下划线",
-		})
+		respondError(c, http.StatusBadRequest, CodeUsernameInvalid, "用户名只能包含字母、数字和下划线")
 		return
 	}
 
 	isManage, authOK := isManageRequest(c, token, req.AuthType)
 	if !authOK {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无效的鉴权类型或token",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
 		return
 	}
 	if isManage && uid == "" && email == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "Manage Token 需要指定 uid 或 email",
-		})
+		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
 		return
 	}
 
@@ -137,29 +119,36 @@ func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
 	var user models.User
 	result := query.First(&user)
 	if result.Error != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户不存在或token无效",
-		})
+		if isManage {
+			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
+			return
+		}
+		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
 		return
 	}
 
 	authService := services.NewAuthService()
 	_, _, err := authService.SyncUserAndProfileName(user.UUID, "", newUsername)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		code := CodeInternalError
+		status := http.StatusInternalServerError
+		switch err.Error() {
+		case "username already exists":
+			code = CodeUsernameConflict
+			status = http.StatusConflict
+		case "profile name already exists":
+			code = CodeProfileNameConflict
+			status = http.StatusConflict
+		case "user not found":
+			code = CodeUserNotFound
+			status = http.StatusNotFound
+		}
+		respondError(c, status, code, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "用户名修改成功",
-		"data": gin.H{
-			"username": newUsername,
-		},
+	respondOK(c, "用户名修改成功", gin.H{
+		"username": newUsername,
 	})
 }
 
@@ -212,52 +201,34 @@ func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 	}
 
 	if token == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "未登录或登录已过期",
-		})
+		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
 		return
 	}
 
 	if strings.TrimSpace(newName) == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "请提供新的角色名",
-		})
+		respondError(c, http.StatusBadRequest, CodeProfileNameInvalid, "请提供新的角色名")
 		return
 	}
 
 	newName = strings.TrimSpace(newName)
 	if len(newName) < 3 || len(newName) > 16 {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "角色名长度必须在3-16个字符之间",
-		})
+		respondError(c, http.StatusBadRequest, CodeProfileNameInvalid, "角色名长度必须在3-16个字符之间")
 		return
 	}
 
 	matched, _ := regexp.MatchString(`^[a-zA-Z0-9_]+$`, newName)
 	if !matched {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "角色名只能包含字母、数字和下划线",
-		})
+		respondError(c, http.StatusBadRequest, CodeProfileNameInvalid, "角色名只能包含字母、数字和下划线")
 		return
 	}
 
 	isManage, authOK := isManageRequest(c, token, req.AuthType)
 	if !authOK {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无效的鉴权类型或token",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
 		return
 	}
 	if isManage && uid == "" && email == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "Manage Token 需要指定 uid 或 email",
-		})
+		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
 		return
 	}
 
@@ -275,20 +246,18 @@ func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 	var user models.User
 	result := query.First(&user)
 	if result.Error != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户不存在或token无效",
-		})
+		if isManage {
+			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
+			return
+		}
+		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
 		return
 	}
 
 	if profileID == "" {
 		var profile models.Profile
 		if err := database.DB.Where("user_id = ?", user.UUID).Order("created_at ASC").First(&profile).Error; err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "当前账号没有可修改的角色",
-			})
+			respondError(c, http.StatusNotFound, CodeProfileNotFound, "当前账号没有可修改的角色")
 			return
 		}
 		profileID = profile.ID
@@ -297,19 +266,28 @@ func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 	authService := services.NewAuthService()
 	_, profile, err := authService.SyncUserAndProfileName(user.UUID, profileID, newName)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		code := CodeInternalError
+		status := http.StatusInternalServerError
+		switch err.Error() {
+		case "user not found":
+			code = CodeUserNotFound
+			status = http.StatusNotFound
+		case "profile not found":
+			code = CodeProfileNotFound
+			status = http.StatusNotFound
+		case "profile name already exists":
+			code = CodeProfileNameConflict
+			status = http.StatusConflict
+		case "username already exists":
+			code = CodeUsernameConflict
+			status = http.StatusConflict
+		}
+		respondError(c, status, code, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "角色名修改成功",
-		"data": gin.H{
-			"profile_id": profile.ID,
-			"name":       profile.Name,
-		},
+	respondOK(c, "角色名修改成功", gin.H{
+		"profile_id": profile.ID,
+		"name":       profile.Name,
 	})
 }

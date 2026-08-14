@@ -21,19 +21,13 @@ func NewKeyGenController() *KeyGenController {
 
 func (kgc *KeyGenController) Generate(c *gin.Context) {
 	if config.AppConfig.KeyGen.Enable == 1 {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": "Key generation endpoint is disabled",
-		})
+		respondError(c, http.StatusForbidden, CodeKeygenDisabled, "Key generation endpoint is disabled")
 		return
 	}
 
 	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to generate key pair",
-		})
+		respondError(c, http.StatusInternalServerError, CodeKeygenFailed, "Failed to generate key pair")
 		return
 	}
 
@@ -44,10 +38,7 @@ func (kgc *KeyGenController) Generate(c *gin.Context) {
 
 	publicKeyBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to generate public key",
-		})
+		respondError(c, http.StatusInternalServerError, CodeKeygenFailed, "Failed to generate public key")
 		return
 	}
 
@@ -58,10 +49,7 @@ func (kgc *KeyGenController) Generate(c *gin.Context) {
 
 	keysDir := "./keys"
 	if err := os.MkdirAll(keysDir, 0700); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to create keys directory",
-		})
+		respondError(c, http.StatusInternalServerError, CodeKeygenFailed, "Failed to create keys directory")
 		return
 	}
 
@@ -69,28 +57,18 @@ func (kgc *KeyGenController) Generate(c *gin.Context) {
 	privateKeyPath := filepath.Join(keysDir, "private.pem")
 
 	if err := os.WriteFile(publicKeyPath, publicKeyPEM, 0600); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to save public key",
-		})
+		respondError(c, http.StatusInternalServerError, CodeKeygenFailed, "Failed to save public key")
 		return
 	}
 
 	if err := os.WriteFile(privateKeyPath, privateKeyPEM, 0600); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to save private key",
-		})
+		respondError(c, http.StatusInternalServerError, CodeKeygenFailed, "Failed to save private key")
 		return
 	}
 
 	config.AppConfig.KeyGen.Enable = 1
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Key pair generated successfully",
-		"data": gin.H{
-			"public_key": string(publicKeyPEM),
-		},
+	respondOK(c, "Key pair generated successfully", gin.H{
+		"public_key": string(publicKeyPEM),
 	})
 }

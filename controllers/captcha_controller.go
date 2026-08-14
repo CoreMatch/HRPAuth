@@ -26,7 +26,7 @@ func (cc *CaptchaController) Status(c *gin.Context) {
 	if config.AppConfig.Security.EnableCaptcha {
 		enabled = 1
 	}
-	c.JSON(http.StatusOK, gin.H{
+	respondOK(c, "Captcha status retrieved", gin.H{
 		"enabled": enabled,
 	})
 }
@@ -35,24 +35,17 @@ func (cc *CaptchaController) Status(c *gin.Context) {
 // PNG image can be fetched. The code itself is never returned to clients.
 func (cc *CaptchaController) Generate(c *gin.Context) {
 	if !config.AppConfig.Security.EnableCaptcha {
-		c.JSON(http.StatusForbidden, gin.H{
-			"success": false,
-			"message": "Captcha is disabled",
-		})
+		respondError(c, http.StatusForbidden, CodeCaptchaDisabled, "Captcha is disabled")
 		return
 	}
 
 	token, _, err := cc.captchaService.Generate()
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to generate captcha",
-		})
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to generate captcha")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success":    true,
+	respondOK(c, "Captcha generated successfully", gin.H{
 		"token":      token,
 		"image_url":  fmt.Sprintf("/captcha/image/%s", token),
 		"expires_in": config.AppConfig.Security.CaptchaTTL,
@@ -64,19 +57,13 @@ func (cc *CaptchaController) Generate(c *gin.Context) {
 func (cc *CaptchaController) Image(c *gin.Context) {
 	token := c.Param("token")
 	if token == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "Missing captcha token",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing captcha token")
 		return
 	}
 
 	pngBytes, err := cc.captchaService.Render(token)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "Captcha not found or expired",
-		})
+		respondError(c, http.StatusNotFound, CodeCaptchaInvalid, "Captcha not found or expired")
 		return
 	}
 

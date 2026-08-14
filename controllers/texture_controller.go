@@ -95,34 +95,22 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 	}
 
 	if token == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "未登录或登录已过期",
-		})
+		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
 		return
 	}
 
 	if textureType != "skin" && textureType != "cape" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无效的材质类型，只能是 skin 或 cape",
-		})
+		respondError(c, http.StatusBadRequest, CodeTextureTypeInvalid, "无效的材质类型，只能是 skin 或 cape")
 		return
 	}
 
 	isManage, authOK := isManageRequest(c, token, authType)
 	if !authOK {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无效的鉴权类型或token",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
 		return
 	}
 	if isManage && uid == "" && email == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "Manage Token 需要指定 uid 或 email",
-		})
+		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
 		return
 	}
 
@@ -140,76 +128,70 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 	var user models.User
 	result := query.First(&user)
 	if result.Error != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户不存在或token无效",
-		})
+		if isManage {
+			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
+			return
+		}
+		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
 		return
 	}
 
 	if profileID == "" {
 		var profile models.Profile
 		if err := database.DB.Where("user_id = ?", user.UUID).Order("created_at ASC").First(&profile).Error; err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "当前账号没有可修改的角色",
-			})
+			respondError(c, http.StatusNotFound, CodeProfileNotFound, "当前账号没有可修改的角色")
 			return
 		}
 		profileID = profile.ID
 	}
 
 	if !tc.authService.IsProfileOwnedByUser(profileID, user.UUID) {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无权操作该角色",
-		})
+		respondError(c, http.StatusForbidden, CodeProfileAccessDenied, "无权操作该角色")
 		return
 	}
 
 	file, err := c.FormFile("file")
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "未上传文件",
-		})
+		respondError(c, http.StatusBadRequest, CodeTextureFileRequired, "未上传文件")
 		return
 	}
 
 	fileData, err := file.Open()
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无法读取文件",
-		})
+		respondError(c, http.StatusInternalServerError, CodeTextureReadFailed, "无法读取文件")
 		return
 	}
 	defer fileData.Close()
 
 	data, err := io.ReadAll(fileData)
 	if err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "文件读取失败",
-		})
+		respondError(c, http.StatusInternalServerError, CodeTextureReadFailed, "文件读取失败")
 		return
 	}
 
 	if err := tc.textureService.UploadTextureByUser(user.UUID, profileID, textureType, model, data); err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		status := http.StatusInternalServerError
+		code := CodeTextureUploadFailed
+		switch err.Error() {
+		case "profile not owned by user":
+			status = http.StatusForbidden
+			code = CodeProfileAccessDenied
+		case "texture not found":
+			status = http.StatusNotFound
+			code = CodeTextureUploadFailed
+		default:
+			if strings.HasPrefix(err.Error(), "invalid ") || strings.Contains(err.Error(), "must be") {
+				status = http.StatusBadRequest
+				code = CodeInvalidRequest
+			}
+		}
+		respondError(c, status, code, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "材质上传成功",
-		"data": gin.H{
-			"profile_id":   profileID,
-			"texture_type": textureType,
-		},
+	respondOK(c, "材质上传成功", gin.H{
+		"profile_id":   profileID,
+		"texture_type": textureType,
 	})
 }
 
@@ -276,34 +258,22 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 	}
 
 	if token == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "未登录或登录已过期",
-		})
+		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
 		return
 	}
 
 	if textureType != "skin" && textureType != "cape" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无效的材质类型，只能是 skin 或 cape",
-		})
+		respondError(c, http.StatusBadRequest, CodeTextureTypeInvalid, "无效的材质类型，只能是 skin 或 cape")
 		return
 	}
 
 	isManage, authOK := isManageRequest(c, token, authType)
 	if !authOK {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无效的鉴权类型或token",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
 		return
 	}
 	if isManage && uid == "" && email == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "Manage Token 需要指定 uid 或 email",
-		})
+		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
 		return
 	}
 
@@ -321,48 +291,42 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 	var user models.User
 	result := query.First(&user)
 	if result.Error != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户不存在或token无效",
-		})
+		if isManage {
+			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
+			return
+		}
+		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
 		return
 	}
 
 	if profileID == "" {
 		var profile models.Profile
 		if err := database.DB.Where("user_id = ?", user.UUID).Order("created_at ASC").First(&profile).Error; err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "当前账号没有可修改的角色",
-			})
+			respondError(c, http.StatusNotFound, CodeProfileNotFound, "当前账号没有可修改的角色")
 			return
 		}
 		profileID = profile.ID
 	}
 
 	if !tc.authService.IsProfileOwnedByUser(profileID, user.UUID) {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无权操作该角色",
-		})
+		respondError(c, http.StatusForbidden, CodeProfileAccessDenied, "无权操作该角色")
 		return
 	}
 
 	if err := tc.textureService.RemoveTextureByUser(user.UUID, profileID, textureType); err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		status := http.StatusInternalServerError
+		code := CodeTextureDeleteFailed
+		if err.Error() == "profile not owned by user" {
+			status = http.StatusForbidden
+			code = CodeProfileAccessDenied
+		}
+		respondError(c, status, code, err.Error())
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "材质删除成功",
-		"data": gin.H{
-			"profile_id":   profileID,
-			"texture_type": textureType,
-		},
+	respondOK(c, "材质删除成功", gin.H{
+		"profile_id":   profileID,
+		"texture_type": textureType,
 	})
 }
 
@@ -426,26 +390,17 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 	}
 
 	if token == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "未登录或登录已过期",
-		})
+		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
 		return
 	}
 
 	isManage, authOK := isManageRequest(c, token, authType)
 	if !authOK {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无效的鉴权类型或token",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
 		return
 	}
 	if isManage && uid == "" && email == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "Manage Token 需要指定 uid 或 email",
-		})
+		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
 		return
 	}
 
@@ -463,30 +418,25 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 	var user models.User
 	result := query.First(&user)
 	if result.Error != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户不存在或token无效",
-		})
+		if isManage {
+			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
+			return
+		}
+		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
 		return
 	}
 
 	if profileID == "" {
 		var profile models.Profile
 		if err := database.DB.Where("user_id = ?", user.UUID).Order("created_at ASC").First(&profile).Error; err != nil {
-			c.JSON(http.StatusOK, gin.H{
-				"success": false,
-				"message": "当前账号没有角色",
-			})
+			respondError(c, http.StatusNotFound, CodeProfileNotFound, "当前账号没有角色")
 			return
 		}
 		profileID = profile.ID
 	}
 
 	if !tc.authService.IsProfileOwnedByUser(profileID, user.UUID) {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无权查看该角色",
-		})
+		respondError(c, http.StatusForbidden, CodeProfileAccessDenied, "无权查看该角色")
 		return
 	}
 
@@ -513,12 +463,8 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 		})
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "获取材质信息成功",
-		"data": gin.H{
-			"profile_id": profileID,
-			"textures":   textures,
-		},
+	respondOK(c, "获取材质信息成功", gin.H{
+		"profile_id": profileID,
+		"textures":   textures,
 	})
 }

@@ -74,32 +74,20 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 	}
 
 	if token == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "未登录或登录已过期",
-			"data":    nil,
-		})
+		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
 		return
 	}
 
 	isManage, authOK := isManageRequest(c, token, req.AuthType)
 	if !authOK {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无效的鉴权类型或token",
-			"data":    nil,
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
 		return
 	}
 
 	// M-T acts as a master remtoken: the target user must be identified by
 	// uid or email since M-T itself is not stored on any user row.
 	if isManage && uid == "" && email == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "Manage Token 需要指定 uid 或 email",
-			"data":    nil,
-		})
+		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
 		return
 	}
 
@@ -118,11 +106,11 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 	var user models.User
 	result := query.First(&user)
 	if result.Error != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户不存在或token无效",
-			"data":    nil,
-		})
+		if isManage {
+			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
+			return
+		}
+		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
 		return
 	}
 
@@ -134,11 +122,7 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 		"verified": user.Verified,
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "获取用户信息成功",
-		"data":    userData,
-	})
+	respondOK(c, "获取用户信息成功", userData)
 }
 
 // EnableMojangBind sets users.mbe = 1 so that a M.T. /register from a Mojang
@@ -181,64 +165,42 @@ func (uc *UserInfoController) DeclareEmail(c *gin.Context) {
 	}
 
 	if manageToken == "" || email == "" || playerName == "" {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": "mt, email, and playername are required",
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "mt, email, and playername are required")
 		return
 	}
 
 	if config.AppConfig.Manage.Token == "" || manageToken != config.AppConfig.Manage.Token {
-		c.JSON(http.StatusUnauthorized, gin.H{
-			"success": false,
-			"message": "invalid manage token",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidManageToken, "invalid manage token")
 		return
 	}
 
 	normalizedEmail, err := normalizeDeclaredEmail(email)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{
-			"success": false,
-			"message": err.Error(),
-		})
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, err.Error())
 		return
 	}
 
 	var user models.User
 	if err := database.DB.Where("username = ?", playerName).First(&user).Error; err != nil {
-		c.JSON(http.StatusNotFound, gin.H{
-			"success": false,
-			"message": "user not found",
-		})
+		respondError(c, http.StatusNotFound, CodeUserNotFound, "user not found")
 		return
 	}
 
 	var existing models.User
 	if err := database.DB.Where("email = ?", normalizedEmail).First(&existing).Error; err == nil && existing.UID != user.UID {
-		c.JSON(http.StatusConflict, gin.H{
-			"success": false,
-			"message": "Email already registered",
-		})
+		respondError(c, http.StatusConflict, CodeEmailAlreadyRegistered, "Email already registered")
 		return
 	}
 
 	if err := database.DB.Model(&user).Update("email", normalizedEmail).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to declare email",
-		})
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to declare email")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Email declared successfully",
-		"data": gin.H{
-			"uid":      user.UID,
-			"email":    normalizedEmail,
-			"username": user.Username,
-		},
+	respondOK(c, "Email declared successfully", gin.H{
+		"uid":      user.UID,
+		"email":    normalizedEmail,
+		"username": user.Username,
 	})
 }
 
@@ -273,26 +235,17 @@ func (uc *UserInfoController) EnableMojangBind(c *gin.Context) {
 	}
 
 	if token == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "未登录或登录已过期",
-		})
+		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
 		return
 	}
 
 	isManage, authOK := isManageRequest(c, token, req.AuthType)
 	if !authOK {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "无效的鉴权类型或token",
-		})
+		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
 		return
 	}
 	if isManage && uid == "" && email == "" {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "Manage Token 需要指定 uid 或 email",
-		})
+		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
 		return
 	}
 
@@ -309,27 +262,21 @@ func (uc *UserInfoController) EnableMojangBind(c *gin.Context) {
 
 	var user models.User
 	if err := query.First(&user).Error; err != nil {
-		c.JSON(http.StatusOK, gin.H{
-			"success": false,
-			"message": "用户不存在或token无效",
-		})
+		if isManage {
+			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
+			return
+		}
+		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
 		return
 	}
 
 	if err := database.DB.Model(&user).Update("mbe", true).Error; err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{
-			"success": false,
-			"message": "Failed to enable mojang bind",
-		})
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to enable mojang bind")
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"success": true,
-		"message": "Mojang bind enabled",
-		"data": gin.H{
-			"uid": user.UID,
-			"mbe": 1,
-		},
+	respondOK(c, "Mojang bind enabled", gin.H{
+		"uid": user.UID,
+		"mbe": 1,
 	})
 }
