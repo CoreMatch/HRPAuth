@@ -4,3 +4,5 @@ build/*
 .trae
 .devcontainer
 migrate
+HRPAuth-Wiki
+HA-Contract
