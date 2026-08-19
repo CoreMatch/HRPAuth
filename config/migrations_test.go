@@ -36,7 +36,7 @@ func TestMigrateConfigUpToDate(t *testing.T) {
 }
 
 func TestMigrateConfigFutureVersion(t *testing.T) {
-	cfg := map[string]interface{}{"version": "4", "site": map[string]interface{}{"name": "future"}}
+	cfg := map[string]interface{}{"version": "5", "site": map[string]interface{}{"name": "future"}}
 	out, changed, err := MigrateConfig(cfg, tokenGen)
 	if err != nil {
 		t.Fatalf("future version must warn and continue, got error: %v", err)
@@ -44,7 +44,7 @@ func TestMigrateConfigFutureVersion(t *testing.T) {
 	if changed {
 		t.Fatal("expected no migration for a newer config")
 	}
-	if out["version"] != "4" {
+	if out["version"] != "5" {
 		t.Fatalf("expected untouched version, got %v", out["version"])
 	}
 }
@@ -133,6 +133,13 @@ func TestMigrateConfigV1Chain(t *testing.T) {
 	if !ok || manage["token"] != "test-manage-token" {
 		t.Fatalf("expected generated manage token, got %v", out["manage"])
 	}
+		oauth2, ok := out["oauth2"].(map[string]interface{})
+		if !ok {
+			t.Fatal("oauth2 section missing after v3->v4")
+		}
+		if oauth2["super_client_id"] != "hrpauth-internal-super" {
+			t.Errorf("expected default super_client_id, got %v", oauth2["super_client_id"])
+		}
 
 	// yggdrasil.security keeps only its own fields
 	ygg := out["yggdrasil"].(map[string]interface{})
@@ -189,6 +196,10 @@ func TestMigrateConfigV2ToV3(t *testing.T) {
 	if manage["token"] != "test-manage-token" {
 		t.Errorf("expected generated manage token, got %v", manage)
 	}
+		oauth2 := out["oauth2"].(map[string]interface{})
+		if oauth2["public_client_id"] != "hrpauth-webui" {
+			t.Errorf("expected public_client_id default, got %v", oauth2["public_client_id"])
+		}
 }
 
 func TestMigrateV2ToV3PreservesExistingTopLevelSecurity(t *testing.T) {

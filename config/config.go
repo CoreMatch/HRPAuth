@@ -4,6 +4,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/goccy/go-yaml"
 )
@@ -13,6 +14,7 @@ type Config struct {
 	Site             SiteConfig
 	Server           ServerRuntimeConfig
 	Security         SecurityConfig
+	OAuth2           OAuth2Config
 	Callback         CallbackConfig
 	Frontend         FrontendConfig
 	KeyGen           KeyGenConfig
@@ -119,6 +121,17 @@ type SecurityConfig struct {
 	CaptchaTTL           int
 }
 
+type OAuth2Config struct {
+	Issuer               string
+	AuthorizationCodeTTL int
+	AccessTokenTTL       int
+	RefreshTokenTTL      int
+	SuperClientID        string
+	SuperClientSecret    string
+	PublicClientID       string
+	PublicRedirectURIs   []string
+}
+
 // YggdrasilSecurityConfig is the Yggdrasil-protocol-related security settings
 // (auth flow durations, texture limits). No HRPAuth-specific fields allowed here.
 type YggdrasilSecurityConfig struct {
@@ -140,7 +153,7 @@ type FeatureFlagsConfig struct {
 
 const ConfigFileName = "config.yaml"
 const ConfigFileDir = "./"
-const ConfigVersion = "3"
+const ConfigVersion = "4"
 
 var AppConfig *Config
 
@@ -174,6 +187,7 @@ func Load() {
 		Site:             parseSiteConfig(yamlConfig),
 		Server:           parseServerRuntimeConfig(yamlConfig),
 		Security:         parseSecurityConfig(yamlConfig),
+		OAuth2:           parseOAuth2Config(yamlConfig),
 		Callback:         parseCallbackConfig(yamlConfig),
 		Frontend:         parseFrontendConfig(yamlConfig),
 		KeyGen:           parseKeyGenConfig(yamlConfig),
@@ -273,6 +287,49 @@ func parseManageConfig(config map[string]interface{}) ManageConfig {
 	manage, _ := config["manage"].(map[string]interface{})
 	return ManageConfig{
 		Token: getString(manage, "token"),
+	}
+}
+
+func parseOAuth2Config(config map[string]interface{}) OAuth2Config {
+	oauth2, _ := config["oauth2"].(map[string]interface{})
+
+	issuer := getString(oauth2, "issuer")
+	if issuer == "" {
+		issuer = getString(getMap(config, "callback"), "url")
+	}
+
+	authCodeTTL := getInt(oauth2, "authorization_code_ttl_sec")
+	if authCodeTTL == 0 {
+		authCodeTTL = 300
+	}
+
+	accessTokenTTL := getInt(oauth2, "access_token_ttl_sec")
+	if accessTokenTTL == 0 {
+		accessTokenTTL = 3600
+	}
+
+	refreshTokenTTL := getInt(oauth2, "refresh_token_ttl_sec")
+	if refreshTokenTTL == 0 {
+		refreshTokenTTL = 2592000
+	}
+
+	publicRedirectURIs := getStringSlice(oauth2, "public_redirect_uris")
+	if len(publicRedirectURIs) == 0 {
+		frontendURL := strings.TrimRight(getString(getMap(config, "frontend"), "url"), "/")
+		if frontendURL != "" {
+			publicRedirectURIs = []string{frontendURL + "/oauth/callback"}
+		}
+	}
+
+	return OAuth2Config{
+		Issuer:               issuer,
+		AuthorizationCodeTTL: authCodeTTL,
+		AccessTokenTTL:       accessTokenTTL,
+		RefreshTokenTTL:      refreshTokenTTL,
+		SuperClientID:        getString(oauth2, "super_client_id"),
+		SuperClientSecret:    getString(oauth2, "super_client_secret"),
+		PublicClientID:       getString(oauth2, "public_client_id"),
+		PublicRedirectURIs:   publicRedirectURIs,
 	}
 }
 
@@ -449,4 +506,38 @@ func getBool(m map[string]interface{}, key string) bool {
 		return value
 	}
 	return false
+}
+
+func getMap(m map[string]interface{}, key string) map[string]interface{} {
+	if m == nil {
+		return nil
+	}
+	value, _ := m[key].(map[string]interface{})
+	return value
+}
+
+func getStringSlice(m map[string]interface{}, key string) []string {
+	if m == nil {
+		return nil
+	}
+
+	raw, exists := m[key]
+	if !exists {
+		return nil
+	}
+
+	switch typed := raw.(type) {
+	case []string:
+		return typed
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if str, ok := item.(string); ok && strings.TrimSpace(str) != "" {
+				out = append(out, str)
+			}
+		}
+		return out
+	default:
+		return nil
+	}
 }

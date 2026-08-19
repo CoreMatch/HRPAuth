@@ -6,9 +6,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
+	"github.com/lnb/HRPAuth-Backend-Go/services"
 )
 
 type UserInfoController struct{}
@@ -18,16 +18,13 @@ func NewUserInfoController() *UserInfoController {
 }
 
 type GetUserRequest struct {
-	RememberToken string `json:"remember_token"`
-	UID           string `json:"uid"`
-	Email         string `json:"email"`
-	AuthType      string `json:"auth_type"`
+	UID   string `json:"uid"`
+	Email string `json:"email"`
 }
 
 type DeclareEmailRequest struct {
-	ManageToken string `json:"mt"`
-	Email       string `json:"email"`
-	PlayerName  string `json:"playername"`
+	Email      string `json:"email"`
+	PlayerName string `json:"playername"`
 }
 
 func normalizeDeclaredEmail(raw string) (string, error) {
@@ -43,18 +40,12 @@ func normalizeDeclaredEmail(raw string) (string, error) {
 
 func (uc *UserInfoController) GetUser(c *gin.Context) {
 	var req GetUserRequest
-	token := ""
 	uid := ""
 	email := ""
 
 	if err := c.ShouldBindJSON(&req); err == nil {
-		token = req.RememberToken
 		uid = req.UID
 		email = req.Email
-	}
-
-	if token == "" {
-		token = c.PostForm("remember_token")
 	}
 	if uid == "" {
 		uid = c.PostForm("uid")
@@ -63,9 +54,6 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 		email = c.PostForm("email")
 	}
 
-	if token == "" {
-		token = c.Query("remember_token")
-	}
 	if uid == "" {
 		uid = c.Query("uid")
 	}
@@ -73,46 +61,11 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 		email = c.Query("email")
 	}
 
-	if token == "" {
-		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
+	authResult, ok := resolveSiteBearerAuth(c, "user.read", "user.read.as-service", false, uid, email)
+	if !ok {
 		return
 	}
-
-	isManage, authOK := isManageRequest(c, token, req.AuthType)
-	if !authOK {
-		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
-		return
-	}
-
-	// M-T acts as a master remtoken: the target user must be identified by
-	// uid or email since M-T itself is not stored on any user row.
-	if isManage && uid == "" && email == "" {
-		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
-		return
-	}
-
-	query := database.DB.Model(&models.User{})
-	if !isManage {
-		query = query.Where("remember_token = ?", token)
-	}
-
-	if uid != "" {
-		query = query.Where("uid = ?", uid)
-	}
-	if email != "" {
-		query = query.Where("email = ?", email)
-	}
-
-	var user models.User
-	result := query.First(&user)
-	if result.Error != nil {
-		if isManage {
-			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
-			return
-		}
-		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
-		return
-	}
+	user := *authResult.User
 
 	userData := gin.H{
 		"uid":      user.UID,
@@ -128,34 +81,26 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 // EnableMojangBind sets users.mbe = 1 so that a M.T. /register from a Mojang
 // player colliding on this username will bind (instead of returning 409).
 //
-// The user opts in themselves (via their remember_token) or an operator
-// enables it on a target user via the M-T path (which requires uid or email).
-// Idempotent: calling when mbe is already 1 is a no-op success.
+// The user opts in themselves via their Bearer token, or a service token
+// enables it on a target user. Idempotent: calling when mbe is already 1 is a
+// no-op success.
 //
 // After a successful bind (users.mojang_uuid is set) this field becomes
 // irrelevant and is left untouched.
 func (uc *UserInfoController) DeclareEmail(c *gin.Context) {
 	var req DeclareEmailRequest
-	manageToken := ""
 	email := ""
 	playerName := ""
 
 	if err := c.ShouldBindJSON(&req); err == nil {
-		manageToken = req.ManageToken
 		email = req.Email
 		playerName = req.PlayerName
-	}
-	if manageToken == "" {
-		manageToken = c.PostForm("mt")
 	}
 	if email == "" {
 		email = c.PostForm("email")
 	}
 	if playerName == "" {
 		playerName = c.PostForm("playername")
-	}
-	if manageToken == "" {
-		manageToken = c.Query("mt")
 	}
 	if email == "" {
 		email = c.Query("email")
@@ -164,13 +109,27 @@ func (uc *UserInfoController) DeclareEmail(c *gin.Context) {
 		playerName = c.Query("playername")
 	}
 
-	if manageToken == "" || email == "" || playerName == "" {
-		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "mt, email, and playername are required")
+	if email == "" || playerName == "" {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "email and playername are required")
 		return
 	}
 
-	if config.AppConfig.Manage.Token == "" || manageToken != config.AppConfig.Manage.Token {
-		respondError(c, http.StatusUnauthorized, CodeInvalidManageToken, "invalid manage token")
+	accessToken := bearerTokenFromRequest(c)
+	if accessToken == "" {
+		respondError(c, http.StatusUnauthorized, CodeOAuthLoginRequired, "missing bearer token")
+		return
+	}
+	tokenContext, err := services.NewOAuth2Service().ResolveAccessToken(accessToken)
+	if err != nil {
+		respondError(c, http.StatusUnauthorized, CodeOAuthInvalidGrant, "invalid access token")
+		return
+	}
+	if !tokenContext.IsService {
+		respondError(c, http.StatusForbidden, CodeOAuthAccessDenied, "declare-email requires a service token")
+		return
+	}
+	if !hasScope(tokenContext.Scopes, "user.declare-email") {
+		respondError(c, http.StatusForbidden, CodeOAuthInsufficientScope, "insufficient scope")
 		return
 	}
 
@@ -206,26 +165,18 @@ func (uc *UserInfoController) DeclareEmail(c *gin.Context) {
 
 func (uc *UserInfoController) EnableMojangBind(c *gin.Context) {
 	var req GetUserRequest
-	token := ""
 	uid := ""
 	email := ""
 
 	if err := c.ShouldBindJSON(&req); err == nil {
-		token = req.RememberToken
 		uid = req.UID
 		email = req.Email
-	}
-	if token == "" {
-		token = c.PostForm("remember_token")
 	}
 	if uid == "" {
 		uid = c.PostForm("uid")
 	}
 	if email == "" {
 		email = c.PostForm("email")
-	}
-	if token == "" {
-		token = c.Query("remember_token")
 	}
 	if uid == "" {
 		uid = c.Query("uid")
@@ -234,41 +185,11 @@ func (uc *UserInfoController) EnableMojangBind(c *gin.Context) {
 		email = c.Query("email")
 	}
 
-	if token == "" {
-		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
+	authResult, ok := resolveSiteBearerAuth(c, "user.mojang-bind-enable", "user.mojang-bind-enable.as-service", false, uid, email)
+	if !ok {
 		return
 	}
-
-	isManage, authOK := isManageRequest(c, token, req.AuthType)
-	if !authOK {
-		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
-		return
-	}
-	if isManage && uid == "" && email == "" {
-		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
-		return
-	}
-
-	query := database.DB.Model(&models.User{})
-	if !isManage {
-		query = query.Where("remember_token = ?", token)
-	}
-	if uid != "" {
-		query = query.Where("uid = ?", uid)
-	}
-	if email != "" {
-		query = query.Where("email = ?", email)
-	}
-
-	var user models.User
-	if err := query.First(&user).Error; err != nil {
-		if isManage {
-			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
-			return
-		}
-		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
-		return
-	}
+	user := *authResult.User
 
 	if err := database.DB.Model(&user).Update("mbe", true).Error; err != nil {
 		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to enable mojang bind")

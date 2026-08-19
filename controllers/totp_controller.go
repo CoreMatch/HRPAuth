@@ -1,12 +1,18 @@
 package controllers
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
+	appredis "github.com/lnb/HRPAuth-Backend-Go/redis"
+	"github.com/lnb/HRPAuth-Backend-Go/services"
 	"github.com/lnb/HRPAuth-Backend-Go/utils"
 )
 
@@ -17,20 +23,16 @@ func NewTOTPController() *TOTPController {
 }
 
 type SetupTOTPRequest struct {
-	Email    string `json:"email"`
-	RemToken string `json:"remtoken"`
-	AuthType string `json:"auth_type"`
+	Email string `json:"email"`
 }
 
 type VerifyTOTPRequest struct {
-	Email    string `json:"email"`
-	Passcode string `json:"passcode"`
+	LoginTicket string `json:"login_ticket"`
+	Passcode    string `json:"passcode"`
 }
 
 type HasBeenEnabledRequest struct {
-	UID      string `json:"uid"`
-	RT       string `json:"rt"`
-	AuthType string `json:"auth_type"`
+	UID string `json:"uid"`
 }
 
 func (tc *TOTPController) Generate(c *gin.Context) {
@@ -54,10 +56,8 @@ func (tc *TOTPController) SetupTOTP(c *gin.Context) {
 	}
 
 	email := req.Email
-	remToken := req.RemToken
-
-	if email == "" || remToken == "" {
-		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing email or remtoken")
+	if email == "" {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing email")
 		return
 	}
 
@@ -66,26 +66,11 @@ func (tc *TOTPController) SetupTOTP(c *gin.Context) {
 		return
 	}
 
-	// M-T is treated as a remtoken: when the caller declares auth_type="manage"
-	// with the configured M-T, the remember_token check is skipped so the
-	// operator can configure TOTP for any user by email.
-	isManage, authOK := isManageRequest(c, remToken, req.AuthType)
-	if !authOK {
-		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "Invalid auth type or token")
+	authResult, ok := resolveSiteBearerAuth(c, "totp.setup", "totp.setup.as-service", false, "", email)
+	if !ok {
 		return
 	}
-
-	query := database.DB.Where("email = ?", email)
-	if !isManage {
-		query = query.Where("remember_token = ?", remToken)
-	}
-
-	var user models.User
-	result := query.First(&user)
-	if result.Error != nil {
-		respondError(c, http.StatusUnauthorized, CodeInvalidCredentials, "Invalid email or remtoken")
-		return
-	}
+	user := *authResult.User
 
 	secret := utils.GenerateTOTPSecret(32)
 	database.DB.Model(&user).Update("totp", secret)
@@ -102,21 +87,27 @@ func (tc *TOTPController) VerifyTOTP(c *gin.Context) {
 		return
 	}
 
-	email := req.Email
-	passcode := req.Passcode
-
-	if email == "" || passcode == "" {
-		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing email or passcode")
+	if req.LoginTicket == "" || req.Passcode == "" {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing login_ticket or passcode")
 		return
 	}
 
-	if !isValidEmail(email) {
-		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
+	ctx := context.Background()
+	key := config.AppConfig.Redis.Prefix + "oauth2:login_ticket:" + req.LoginTicket
+	raw, err := appredis.Client.Get(ctx, key).Result()
+	if err != nil {
+		respondError(c, http.StatusUnauthorized, CodeInvalidLoginTicket, "Invalid or expired login ticket")
+		return
+	}
+
+	var ticket loginTicketPayload
+	if err := json.Unmarshal([]byte(raw), &ticket); err != nil || ticket.UserID == "" {
+		respondError(c, http.StatusUnauthorized, CodeInvalidLoginTicket, "Invalid or expired login ticket")
 		return
 	}
 
 	var user models.User
-	result := database.DB.Where("email = ?", email).First(&user)
+	result := database.DB.Where("uuid = ?", ticket.UserID).First(&user)
 	if result.Error != nil || user.TOTP == "" {
 		respondError(c, http.StatusUnauthorized, CodeTOTPNotConfigured, "User not found or TOTP not configured")
 		return
@@ -128,25 +119,40 @@ func (tc *TOTPController) VerifyTOTP(c *gin.Context) {
 
 	expected := utils.GenerateTOTPAtCounter(secret, counter, 6)
 
-	if passcode != expected {
+	if req.Passcode != expected {
 		counterPrev := counter - 1
 		otpPrev := utils.GenerateTOTPAtCounter(secret, counterPrev, 6)
 
-		if passcode != otpPrev {
+		if req.Passcode != otpPrev {
 			respondError(c, http.StatusUnauthorized, CodePasscodeInvalid, "Invalid passcode")
 			return
 		}
 	}
 
-	rt := user.RememberToken
-	if rt == "" {
-		rt = utils.GenerateRandomToken(32)
-		database.DB.Model(&user).Update("remember_token", rt)
+	if err := appredis.Client.Del(ctx, key).Err(); err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to consume login ticket")
+		return
+	}
+
+	accessToken, refreshToken, err := services.NewOAuth2Service().IssueFirstPartyUserTokens(user.UUID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to issue OAuth2 token")
+		return
+	}
+
+	scope := ""
+	if accessToken != nil {
+		var scopes []string
+		_ = json.Unmarshal([]byte(accessToken.Scopes), &scopes)
+		scope = strings.Join(scopes, " ")
 	}
 
 	respondOK(c, "TOTP verified successfully", gin.H{
-		"email": email,
-		"rt":    rt,
+		"access_token":  accessToken.AccessToken,
+		"refresh_token": refreshToken.RefreshToken,
+		"token_type":    "Bearer",
+		"expires_in":    config.AppConfig.OAuth2.AccessTokenTTL,
+		"scope":         scope,
 	})
 }
 
@@ -158,33 +164,15 @@ func (tc *TOTPController) HasBeenEnabled(c *gin.Context) {
 	}
 
 	uid := req.UID
-	rt := req.RT
-
-	if uid == "" || rt == "" {
-		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing uid or rt")
+	if uid == "" {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing uid")
 		return
 	}
-
-	// M-T is treated as a remtoken: when the caller declares auth_type="manage"
-	// with the configured M-T, the remember_token check is skipped so the
-	// operator can query any user by uid.
-	isManage, authOK := isManageRequest(c, rt, req.AuthType)
-	if !authOK {
-		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "Invalid auth type or token")
+	authResult, ok := resolveSiteBearerAuth(c, "totp.status", "totp.status.as-service", false, uid, "")
+	if !ok {
 		return
 	}
-
-	query := database.DB.Where("uid = ?", uid)
-	if !isManage {
-		query = query.Where("remember_token = ?", rt)
-	}
-
-	var user models.User
-	result := query.First(&user)
-	if result.Error != nil {
-		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "Invalid uid or rt")
-		return
-	}
+	user := *authResult.User
 
 	enabled := 0
 	if user.TOTP != "" {

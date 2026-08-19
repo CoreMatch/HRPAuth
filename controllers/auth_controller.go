@@ -27,18 +27,16 @@ type LoginRequest struct {
 }
 
 // RegisterRequest captures both the normal WebUI registration body and the
-// M.T.-authenticated (WinnerProxy) body described in references/HA-ROADMAP.md §3.
-// Normal-path fields (CaptchaToken/CaptchaCode/MojangUUID/RememberToken) are
-// ignored on the path that does not consume them.
+// Bearer-authenticated service proxy body used by WinnerProxy-like services.
+// Normal-path fields (CaptchaToken/CaptchaCode/MojangUUID) are ignored on the
+// path that does not consume them.
 type RegisterRequest struct {
-	Email         string `json:"email"`
-	Username      string `json:"username"`
-	Password      string `json:"password"`
-	CaptchaToken  string `json:"captcha_token"`
-	CaptchaCode   string `json:"captcha_code"`
-	MojangUUID    string `json:"mojang_uuid"`
-	RememberToken string `json:"remember_token"`
-	AuthType      string `json:"auth_type"`
+	Email        string `json:"email"`
+	Username     string `json:"username"`
+	Password     string `json:"password"`
+	CaptchaToken string `json:"captcha_token"`
+	CaptchaCode  string `json:"captcha_code"`
+	MojangUUID   string `json:"mojang_uuid"`
 }
 
 type LogoutRequest struct {
@@ -109,66 +107,23 @@ func isManageRequest(c *gin.Context, token, jsonAuthType string) (isManage, vali
 }
 
 func (ac *AuthController) Login(c *gin.Context) {
-	var req LoginRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
-		return
-	}
-
-	email := req.Email
-	password := req.Password
-
-	if !isValidEmail(email) {
-		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
-		return
-	}
-
-	var user models.User
-	result := database.DB.Where("email = ?", email).First(&user)
-	if result.Error != nil {
-		respondError(c, http.StatusUnauthorized, CodeInvalidCredentials, "Email or password incorrect")
-		return
-	}
-
-	if !utils.CheckPasswordHash(password, user.Password) {
-		respondError(c, http.StatusUnauthorized, CodeInvalidCredentials, "Email or password incorrect")
-		return
-	}
-
-	token := utils.GenerateRandomToken(32)
-	now := time.Now()
-
-	database.DB.Model(&user).Updates(map[string]interface{}{
-		"remember_token": token,
-		"last_sign_at":   now,
-	})
-
-	totp := 0
-	if user.TOTP != "" {
-		totp = 1
-	}
-
-	respondOK(c, "Login successful", gin.H{
-		"token": token,
-		"uid":   user.UID,
-		"totp":  totp,
-	})
+	respondError(c, http.StatusGone, CodeEndpointDeprecated, "POST /login is deprecated; use OAuth2 endpoints instead")
 }
 
 // Register handles POST /register.
 //
-// Two paths are supported, dispatched on the declared auth_type:
+// Two paths are supported:
 //
-//   - Normal WebUI registration (default, auth_type undeclared or "remember"):
+//   - Normal WebUI registration (no Bearer token):
 //     captcha enforced when enabled, email required and validated,
 //     username/email uniqueness checked.
-//   - M.T. (WinnerProxy) registration (auth_type="manage" plus the configured
-//     Manage Token): captcha and email-format checks are skipped, email
-//     auto-fills with a placeholder when absent, and the mojang_uuid field
+//   - Service proxy registration (Bearer service token with register.manage):
+//     captcha and email-format checks are skipped, email auto-fills with a
+//     placeholder when absent, and the mojang_uuid field
 //     drives the upsert/bind logic in references/HA-ROADMAP.md §3.4 via
 //     handleManageRegister.
 //
-// Both paths return profile_id (Profile.ID) on success. The M.T. new-user case
+// Both paths return profile_id (Profile.ID) on success. The service new-user case
 // additionally returns cbh: 0 per §3.5.
 func (ac *AuthController) Register(c *gin.Context) {
 	var req RegisterRequest
@@ -177,14 +132,26 @@ func (ac *AuthController) Register(c *gin.Context) {
 		return
 	}
 
-	// The M.T. path is taken only when the caller explicitly declares
-	// auth_type="manage" AND the submitted token matches the configured M-T.
-	// Without a declaration the request is treated as a normal (remember-token
-	// optional) registration, even if the token happens to equal the M-T.
-	isManage, authOK := isManageRequest(c, req.RememberToken, req.AuthType)
-	if !authOK {
-		respondError(c, http.StatusBadRequest, CodeInvalidAuthTypeOrToken, "Invalid auth type or token")
-		return
+	// Service-side proxy registration now uses OAuth2 Bearer tokens instead of
+	// remember_token/auth_type=manage. No Authorization header => normal user
+	// registration path.
+	isManage := false
+	accessToken := bearerTokenFromRequest(c)
+	if accessToken != "" {
+		tokenContext, err := services.NewOAuth2Service().ResolveAccessToken(accessToken)
+		if err != nil {
+			respondError(c, http.StatusUnauthorized, CodeOAuthInvalidGrant, "invalid access token")
+			return
+		}
+		if !tokenContext.IsService {
+			respondError(c, http.StatusForbidden, CodeOAuthAccessDenied, "register proxy path requires a service token")
+			return
+		}
+		if !hasScope(tokenContext.Scopes, "register.manage") {
+			respondError(c, http.StatusForbidden, CodeOAuthInsufficientScope, "insufficient scope")
+			return
+		}
+		isManage = true
 	}
 
 	// Username / password length always enforced.
@@ -197,7 +164,7 @@ func (ac *AuthController) Register(c *gin.Context) {
 		return
 	}
 
-	// mojang_uuid format check (M.T. path; ignored on normal path).
+	// mojang_uuid format check (service proxy path; ignored on normal path).
 	mojangUUID := strings.ToLower(strings.TrimSpace(req.MojangUUID))
 	if mojangUUID != "" {
 		if !isValidMojangUUID(mojangUUID) {
@@ -212,7 +179,7 @@ func (ac *AuthController) Register(c *gin.Context) {
 		if email == "" {
 			email = strings.ToLower(req.Username) + "@mojang-imported.invalid"
 		}
-		// M.T. path skips strict email-format validation per §3.1.
+		// Service proxy path skips strict email-format validation.
 	} else {
 		if !isValidEmail(email) {
 			respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
@@ -300,14 +267,14 @@ func (ac *AuthController) Register(c *gin.Context) {
 }
 
 // handleManageRegister implements the upsert/bind decision tree from
-// references/HA-ROADMAP.md §3.4 for the M.T. (WinnerProxy) path. The caller
+// references/HA-ROADMAP.md §3.4 for the service proxy registration path. The caller
 // has already validated input, hashed the password, and computed the placeholder
 // email where needed. This function is the only place that writes
 // mojang_uuid / cbh for /register.
 func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, hash, mojangUUID, ip string, now time.Time) {
 	authService := services.NewAuthService()
 	// Per references/HA-ROADMAP.md §4.1: passively trigger cleanup on every
-	// successful M.T. /register. Serialization is handled inside the service.
+	// successful service /register. Serialization is handled inside the service.
 	cleanupTriggered := false
 	defer func() {
 		if cleanupTriggered {
@@ -439,84 +406,20 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 }
 
 func (ac *AuthController) Logout(c *gin.Context) {
-	token := ""
-
-	var req LogoutRequest
-	if err := c.ShouldBindJSON(&req); err == nil && req.RememberToken != "" {
-		token = req.RememberToken
+	accessToken := bearerTokenFromRequest(c)
+	if accessToken == "" {
+		respondError(c, http.StatusUnauthorized, CodeOAuthLoginRequired, "missing bearer token")
+		return
 	}
-
-	if token == "" {
-		token = c.PostForm("remember_token")
+	if err := services.NewOAuth2Service().RevokeAccessToken(accessToken); err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to revoke token")
+		return
 	}
-	if token == "" {
-		token = c.Query("remember_token")
-	}
-
-	if token != "" {
-		// The Manage Token (M-T) lives in config and is not stored in the DB,
-		// so the update below is a no-op for it. For a real remember_token
-		// the row is matched and cleared.
-		database.DB.Model(&models.User{}).
-			Where("remember_token = ?", token).
-			Update("remember_token", nil)
-	}
-
 	respondOK(c, "Logout successful", nil)
 }
 
 // LoginByMT handles POST /loginbymt. It issues a remember_token for a user
 // identified by UID or Email, authenticated by the operator-level M-T.
 func (ac *AuthController) LoginByMT(c *gin.Context) {
-	var req LoginByMTRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
-		return
-	}
-
-	// Validate Management Token (M-T).
-	if config.AppConfig.Manage.Token == "" || req.ManageToken != config.AppConfig.Manage.Token {
-		respondError(c, http.StatusUnauthorized, CodeInvalidManageToken, "Invalid management token")
-		return
-	}
-
-	var user models.User
-	query := database.DB
-	if req.UID != 0 {
-		query = query.Where("uid = ?", req.UID)
-	} else if req.Email != "" {
-		query = query.Where("email = ?", req.Email)
-	} else {
-		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "UID or Email is required")
-		return
-	}
-
-	if err := query.First(&user).Error; err != nil {
-		respondError(c, http.StatusNotFound, CodeUserNotFound, "User not found")
-		return
-	}
-
-	// Issue new remember_token.
-	token := utils.GenerateRandomToken(32)
-	now := time.Now()
-
-	if err := database.DB.Model(&user).Updates(map[string]interface{}{
-		"remember_token": token,
-		"last_sign_at":   now,
-	}).Error; err != nil {
-		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to update token")
-		return
-	}
-
-	totp := 0
-	if user.TOTP != "" {
-		totp = 1
-	}
-
-	respondOK(c, "Login successful", gin.H{
-		"token": token,
-		"uid":   user.UID,
-		"email": user.Email,
-		"totp":  totp,
-	})
+	respondError(c, http.StatusGone, CodeEndpointDeprecated, "POST /loginbymt is deprecated; use OAuth2 client_credentials instead")
 }

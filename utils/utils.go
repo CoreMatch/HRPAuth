@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"math/big"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -108,4 +109,16 @@ func ExtractDomain(rawURL string) string {
 
 func CurrentTimestampMillis() int64 {
 	return time.Now().UnixNano() / int64(time.Millisecond)
+}
+
+func ParseUintString(raw string) (uint, bool) {
+	value, err := strconv.ParseUint(strings.TrimSpace(raw), 10, 64)
+	if err != nil {
+		return 0, false
+	}
+	return uint(value), true
+}
+
+func UintToString(value uint) string {
+	return strconv.FormatUint(uint64(value), 10)
 }

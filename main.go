@@ -11,6 +11,7 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/controllers"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/redis"
+	"github.com/lnb/HRPAuth-Backend-Go/services"
 )
 
 func CORSMiddleware() gin.HandlerFunc {
@@ -76,6 +77,11 @@ func main() {
 	textureCtrl := controllers.NewTextureController()
 	yggdrasilCtrl := controllers.NewYggdrasilController()
 	captchaCtrl := controllers.NewCaptchaController()
+	oauth2Ctrl := controllers.NewOAuth2Controller()
+
+	if err := services.NewOAuth2Service().EnsureBuiltInClients(); err != nil {
+		log.Fatalf("Failed to ensure OAuth2 built-in clients: %v", err)
+	}
 
 	r.GET("/status", func(c *gin.Context) {
 		controllers := gin.H{
@@ -100,6 +106,12 @@ func main() {
 
 	api := r.Group("")
 	{
+		api.GET("/oauth/authorize", oauth2Ctrl.Authorize)
+		api.POST("/oauth/login-ticket", oauth2Ctrl.LoginTicket)
+		api.POST("/oauth/authorize/decision", oauth2Ctrl.AuthorizeDecision)
+		api.POST("/oauth/token", oauth2Ctrl.Token)
+		api.POST("/oauth/revoke", oauth2Ctrl.Revoke)
+
 		api.POST("/login", authCtrl.Login)
 		api.POST("/loginbymt", authCtrl.LoginByMT)
 		api.POST("/register", authCtrl.Register)

@@ -24,10 +24,12 @@ type ConfigMigration struct {
 //   - "2":   redis added, memcache renamed to verification_code
 //   - "3":   security fields (incl. captcha) moved from yggdrasil.security to
 //     top-level security, manage.token introduced
+//   - "4":   oauth2 section introduced for site-side OAuth2 authorization
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
 		{FromVersion: "2", ToVersion: "3", Migrate: migrateV2ToV3},
+		{FromVersion: "3", ToVersion: "4", Migrate: migrateV3ToV4},
 	}
 }
 
@@ -232,5 +234,54 @@ func migrateV2ToV3(cfg map[string]interface{}, tokenGen func() string) error {
 	}
 
 	cfg["version"] = "3"
+	return nil
+}
+
+// migrateV3ToV4 introduces the site-side oauth2 section.
+// It creates:
+//   - a built-in confidential "super client" for low-friction service-to-service use
+//   - a built-in public client for WebUI authorization_code + PKCE
+func migrateV3ToV4(cfg map[string]interface{}, tokenGen func() string) error {
+	oauth2, _ := cfg["oauth2"].(map[string]interface{})
+	if oauth2 == nil {
+		oauth2 = map[string]interface{}{}
+	}
+
+	callback, _ := cfg["callback"].(map[string]interface{})
+	frontend, _ := cfg["frontend"].(map[string]interface{})
+
+	if issuer, _ := oauth2["issuer"].(string); issuer == "" {
+		if url, _ := callback["url"].(string); url != "" {
+			oauth2["issuer"] = url
+		}
+	}
+	if ttl, ok := oauth2["authorization_code_ttl_sec"]; !ok || ttl == 0 {
+		oauth2["authorization_code_ttl_sec"] = 300
+	}
+	if ttl, ok := oauth2["access_token_ttl_sec"]; !ok || ttl == 0 {
+		oauth2["access_token_ttl_sec"] = 3600
+	}
+	if ttl, ok := oauth2["refresh_token_ttl_sec"]; !ok || ttl == 0 {
+		oauth2["refresh_token_ttl_sec"] = 2592000
+	}
+	if clientID, _ := oauth2["super_client_id"].(string); clientID == "" {
+		oauth2["super_client_id"] = "hrpauth-internal-super"
+	}
+	if secret, _ := oauth2["super_client_secret"].(string); secret == "" {
+		oauth2["super_client_secret"] = tokenGen()
+	}
+	if clientID, _ := oauth2["public_client_id"].(string); clientID == "" {
+		oauth2["public_client_id"] = "hrpauth-webui"
+	}
+	if _, exists := oauth2["public_redirect_uris"]; !exists {
+		redirects := []string{}
+		if frontendURL, _ := frontend["url"].(string); frontendURL != "" {
+			redirects = append(redirects, strings.TrimRight(frontendURL, "/")+"/oauth/callback")
+		}
+		oauth2["public_redirect_uris"] = redirects
+	}
+
+	cfg["oauth2"] = oauth2
+	cfg["version"] = "4"
 	return nil
 }

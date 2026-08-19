@@ -50,8 +50,8 @@ yggdrasil:
 		t.Fatalf("failed to parse migrated config: %v", err)
 	}
 
-	if cfg["version"] != "3" {
-		t.Fatalf("expected version 3 after migration, got %v", cfg["version"])
+	if cfg["version"] != "4" {
+		t.Fatalf("expected version 4 after migration, got %v", cfg["version"])
 	}
 	sec, ok := cfg["security"].(map[string]interface{})
 	if !ok {
@@ -66,6 +66,13 @@ yggdrasil:
 	}
 	if token, _ := manage["token"].(string); len(token) != 64 {
 		t.Errorf("expected generated 64-char manage token, got %q", token)
+	}
+	oauth2, ok := cfg["oauth2"].(map[string]interface{})
+	if !ok {
+		t.Fatal("oauth2 section missing after migration")
+	}
+	if oauth2["super_client_id"] != "hrpauth-internal-super" {
+		t.Errorf("expected default super_client_id, got %v", oauth2["super_client_id"])
 	}
 
 	// Backup of the original file must exist.

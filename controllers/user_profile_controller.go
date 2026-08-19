@@ -18,39 +18,30 @@ func NewUserProfileController() *UserProfileController {
 }
 
 type ChangeUsernameRequest struct {
-	RememberToken string `json:"remember_token"`
-	UID           string `json:"uid"`
-	Email         string `json:"email"`
-	Username      string `json:"username"`
-	AuthType      string `json:"auth_type"`
+	UID      string `json:"uid"`
+	Email    string `json:"email"`
+	Username string `json:"username"`
 }
 
 type ChangeProfileNameRequest struct {
-	RememberToken string `json:"remember_token"`
-	UID           string `json:"uid"`
-	Email         string `json:"email"`
-	ProfileID     string `json:"profile_id"`
-	Name          string `json:"name"`
-	AuthType      string `json:"auth_type"`
+	UID       string `json:"uid"`
+	Email     string `json:"email"`
+	ProfileID string `json:"profile_id"`
+	Name      string `json:"name"`
 }
 
 func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
 	var req ChangeUsernameRequest
-	token := ""
 	newUsername := ""
 	uid := ""
 	email := ""
 
 	if err := c.ShouldBindJSON(&req); err == nil {
-		token = req.RememberToken
 		newUsername = req.Username
 		uid = req.UID
 		email = req.Email
 	}
 
-	if token == "" {
-		token = c.PostForm("remember_token")
-	}
 	if newUsername == "" {
 		newUsername = c.PostForm("username")
 	}
@@ -61,9 +52,6 @@ func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
 		email = c.PostForm("email")
 	}
 
-	if token == "" {
-		token = c.Query("remember_token")
-	}
 	if newUsername == "" {
 		newUsername = c.Query("username")
 	}
@@ -72,11 +60,6 @@ func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
 	}
 	if email == "" {
 		email = c.Query("email")
-	}
-
-	if token == "" {
-		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
-		return
 	}
 
 	if newUsername == "" {
@@ -95,37 +78,11 @@ func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
 		return
 	}
 
-	isManage, authOK := isManageRequest(c, token, req.AuthType)
-	if !authOK {
-		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
+	authResult, ok := resolveSiteBearerAuth(c, "profile.change-username", "profile.change-username.as-service", false, uid, email)
+	if !ok {
 		return
 	}
-	if isManage && uid == "" && email == "" {
-		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
-		return
-	}
-
-	query := database.DB.Model(&models.User{})
-	if !isManage {
-		query = query.Where("remember_token = ?", token)
-	}
-	if uid != "" {
-		query = query.Where("uid = ?", uid)
-	}
-	if email != "" {
-		query = query.Where("email = ?", email)
-	}
-
-	var user models.User
-	result := query.First(&user)
-	if result.Error != nil {
-		if isManage {
-			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
-			return
-		}
-		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
-		return
-	}
+	user := *authResult.User
 
 	authService := services.NewAuthService()
 	_, _, err := authService.SyncUserAndProfileName(user.UUID, "", newUsername)
@@ -154,23 +111,18 @@ func (uc *UserProfileController) ChangeUsername(c *gin.Context) {
 
 func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 	var req ChangeProfileNameRequest
-	token := ""
 	profileID := ""
 	newName := ""
 	uid := ""
 	email := ""
 
 	if err := c.ShouldBindJSON(&req); err == nil {
-		token = req.RememberToken
 		profileID = req.ProfileID
 		newName = req.Name
 		uid = req.UID
 		email = req.Email
 	}
 
-	if token == "" {
-		token = c.PostForm("remember_token")
-	}
 	if profileID == "" {
 		profileID = c.PostForm("profile_id")
 	}
@@ -184,9 +136,6 @@ func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 		email = c.PostForm("email")
 	}
 
-	if token == "" {
-		token = c.Query("remember_token")
-	}
 	if profileID == "" {
 		profileID = c.Query("profile_id")
 	}
@@ -198,11 +147,6 @@ func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 	}
 	if email == "" {
 		email = c.Query("email")
-	}
-
-	if token == "" {
-		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
-		return
 	}
 
 	if strings.TrimSpace(newName) == "" {
@@ -222,37 +166,11 @@ func (uc *UserProfileController) ChangeProfileName(c *gin.Context) {
 		return
 	}
 
-	isManage, authOK := isManageRequest(c, token, req.AuthType)
-	if !authOK {
-		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
+	authResult, ok := resolveSiteBearerAuth(c, "profile.change-name", "profile.change-name.as-service", false, uid, email)
+	if !ok {
 		return
 	}
-	if isManage && uid == "" && email == "" {
-		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
-		return
-	}
-
-	query := database.DB.Model(&models.User{})
-	if !isManage {
-		query = query.Where("remember_token = ?", token)
-	}
-	if uid != "" {
-		query = query.Where("uid = ?", uid)
-	}
-	if email != "" {
-		query = query.Where("email = ?", email)
-	}
-
-	var user models.User
-	result := query.First(&user)
-	if result.Error != nil {
-		if isManage {
-			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
-			return
-		}
-		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
-		return
-	}
+	user := *authResult.User
 
 	if profileID == "" {
 		var profile models.Profile

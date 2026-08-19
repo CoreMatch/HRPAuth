@@ -24,41 +24,32 @@ func NewTextureController() *TextureController {
 }
 
 type UploadTextureRequest struct {
-	RememberToken string `json:"remember_token"`
-	UID           string `json:"uid"`
-	Email         string `json:"email"`
-	ProfileID     string `json:"profile_id"`
-	TextureType   string `json:"texture_type"`
-	Model         string `json:"model"`
-	AuthType      string `json:"auth_type"`
+	UID         string `json:"uid"`
+	Email       string `json:"email"`
+	ProfileID   string `json:"profile_id"`
+	TextureType string `json:"texture_type"`
+	Model       string `json:"model"`
 }
 
 func (tc *TextureController) UploadTexture(c *gin.Context) {
-	token := ""
 	profileID := ""
 	textureType := ""
 	model := ""
 	uid := ""
 	email := ""
-	authType := ""
 
 	contentType := c.ContentType()
 	if strings.Contains(contentType, "application/json") {
 		var req UploadTextureRequest
 		if err := c.ShouldBindJSON(&req); err == nil {
-			token = req.RememberToken
 			profileID = req.ProfileID
 			textureType = req.TextureType
 			model = req.Model
 			uid = req.UID
 			email = req.Email
-			authType = req.AuthType
 		}
 	}
 
-	if token == "" {
-		token = c.PostForm("remember_token")
-	}
 	if profileID == "" {
 		profileID = c.PostForm("profile_id")
 	}
@@ -75,9 +66,6 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 		email = c.PostForm("email")
 	}
 
-	if token == "" {
-		token = c.Query("remember_token")
-	}
 	if profileID == "" {
 		profileID = c.Query("profile_id")
 	}
@@ -94,47 +82,16 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 		email = c.Query("email")
 	}
 
-	if token == "" {
-		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
-		return
-	}
-
 	if textureType != "skin" && textureType != "cape" {
 		respondError(c, http.StatusBadRequest, CodeTextureTypeInvalid, "无效的材质类型，只能是 skin 或 cape")
 		return
 	}
 
-	isManage, authOK := isManageRequest(c, token, authType)
-	if !authOK {
-		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
+	authResult, ok := resolveSiteBearerAuth(c, "texture.upload", "texture.upload.as-service", false, uid, email)
+	if !ok {
 		return
 	}
-	if isManage && uid == "" && email == "" {
-		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
-		return
-	}
-
-	query := database.DB.Model(&models.User{})
-	if !isManage {
-		query = query.Where("remember_token = ?", token)
-	}
-	if uid != "" {
-		query = query.Where("uid = ?", uid)
-	}
-	if email != "" {
-		query = query.Where("email = ?", email)
-	}
-
-	var user models.User
-	result := query.First(&user)
-	if result.Error != nil {
-		if isManage {
-			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
-			return
-		}
-		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
-		return
-	}
+	user := *authResult.User
 
 	if profileID == "" {
 		var profile models.Profile
@@ -196,38 +153,29 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 }
 
 type DeleteTextureRequest struct {
-	RememberToken string `json:"remember_token"`
-	UID           string `json:"uid"`
-	Email         string `json:"email"`
-	ProfileID     string `json:"profile_id"`
-	TextureType   string `json:"texture_type"`
-	AuthType      string `json:"auth_type"`
+	UID         string `json:"uid"`
+	Email       string `json:"email"`
+	ProfileID   string `json:"profile_id"`
+	TextureType string `json:"texture_type"`
 }
 
 func (tc *TextureController) DeleteTexture(c *gin.Context) {
-	token := ""
 	profileID := ""
 	textureType := ""
 	uid := ""
 	email := ""
-	authType := ""
 
 	contentType := c.ContentType()
 	if strings.Contains(contentType, "application/json") {
 		var req DeleteTextureRequest
 		if err := c.ShouldBindJSON(&req); err == nil {
-			token = req.RememberToken
 			profileID = req.ProfileID
 			textureType = req.TextureType
 			uid = req.UID
 			email = req.Email
-			authType = req.AuthType
 		}
 	}
 
-	if token == "" {
-		token = c.PostForm("remember_token")
-	}
 	if profileID == "" {
 		profileID = c.PostForm("profile_id")
 	}
@@ -241,9 +189,6 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 		email = c.PostForm("email")
 	}
 
-	if token == "" {
-		token = c.Query("remember_token")
-	}
 	if profileID == "" {
 		profileID = c.Query("profile_id")
 	}
@@ -257,47 +202,16 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 		email = c.Query("email")
 	}
 
-	if token == "" {
-		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
-		return
-	}
-
 	if textureType != "skin" && textureType != "cape" {
 		respondError(c, http.StatusBadRequest, CodeTextureTypeInvalid, "无效的材质类型，只能是 skin 或 cape")
 		return
 	}
 
-	isManage, authOK := isManageRequest(c, token, authType)
-	if !authOK {
-		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
+	authResult, ok := resolveSiteBearerAuth(c, "texture.delete", "texture.delete.as-service", false, uid, email)
+	if !ok {
 		return
 	}
-	if isManage && uid == "" && email == "" {
-		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
-		return
-	}
-
-	query := database.DB.Model(&models.User{})
-	if !isManage {
-		query = query.Where("remember_token = ?", token)
-	}
-	if uid != "" {
-		query = query.Where("uid = ?", uid)
-	}
-	if email != "" {
-		query = query.Where("email = ?", email)
-	}
-
-	var user models.User
-	result := query.First(&user)
-	if result.Error != nil {
-		if isManage {
-			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
-			return
-		}
-		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
-		return
-	}
+	user := *authResult.User
 
 	if profileID == "" {
 		var profile models.Profile
@@ -331,11 +245,9 @@ func (tc *TextureController) DeleteTexture(c *gin.Context) {
 }
 
 type GetTextureRequest struct {
-	RememberToken string `json:"remember_token"`
-	UID           string `json:"uid"`
-	Email         string `json:"email"`
-	ProfileID     string `json:"profile_id"`
-	AuthType      string `json:"auth_type"`
+	UID       string `json:"uid"`
+	Email     string `json:"email"`
+	ProfileID string `json:"profile_id"`
 }
 
 type TextureResponse struct {
@@ -345,27 +257,20 @@ type TextureResponse struct {
 }
 
 func (tc *TextureController) GetTexture(c *gin.Context) {
-	token := ""
 	profileID := ""
 	uid := ""
 	email := ""
-	authType := ""
 
 	contentType := c.ContentType()
 	if strings.Contains(contentType, "application/json") {
 		var req GetTextureRequest
 		if err := c.ShouldBindJSON(&req); err == nil {
-			token = req.RememberToken
 			profileID = req.ProfileID
 			uid = req.UID
 			email = req.Email
-			authType = req.AuthType
 		}
 	}
 
-	if token == "" {
-		token = c.PostForm("remember_token")
-	}
 	if profileID == "" {
 		profileID = c.PostForm("profile_id")
 	}
@@ -376,9 +281,6 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 		email = c.PostForm("email")
 	}
 
-	if token == "" {
-		token = c.Query("remember_token")
-	}
 	if profileID == "" {
 		profileID = c.Query("profile_id")
 	}
@@ -389,42 +291,11 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 		email = c.Query("email")
 	}
 
-	if token == "" {
-		respondError(c, http.StatusUnauthorized, CodeRememberTokenRequired, "未登录或登录已过期")
+	authResult, ok := resolveSiteBearerAuth(c, "texture.get", "texture.get.as-service", false, uid, email)
+	if !ok {
 		return
 	}
-
-	isManage, authOK := isManageRequest(c, token, authType)
-	if !authOK {
-		respondError(c, http.StatusUnauthorized, CodeInvalidAuthTypeOrToken, "无效的鉴权类型或token")
-		return
-	}
-	if isManage && uid == "" && email == "" {
-		respondError(c, http.StatusBadRequest, CodeManageTargetRequired, "Manage Token 需要指定 uid 或 email")
-		return
-	}
-
-	query := database.DB.Model(&models.User{})
-	if !isManage {
-		query = query.Where("remember_token = ?", token)
-	}
-	if uid != "" {
-		query = query.Where("uid = ?", uid)
-	}
-	if email != "" {
-		query = query.Where("email = ?", email)
-	}
-
-	var user models.User
-	result := query.First(&user)
-	if result.Error != nil {
-		if isManage {
-			respondError(c, http.StatusNotFound, CodeUserNotFound, "用户不存在")
-			return
-		}
-		respondError(c, http.StatusUnauthorized, CodeInvalidRememberToken, "用户不存在或token无效")
-		return
-	}
+	user := *authResult.User
 
 	if profileID == "" {
 		var profile models.Profile

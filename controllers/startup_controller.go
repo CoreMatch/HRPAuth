@@ -51,6 +51,7 @@ func (sc *StartupController) InitializeConfig() error {
 }
 
 func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath string) map[string]interface{} {
+	frontendURL := "https://auth.samuelcheston.com/"
 	return map[string]interface{}{
 		"version": config.ConfigVersion,
 		"site": map[string]interface{}{
@@ -66,7 +67,7 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 			"url": "https://backend.auth.samuelcheston.com/",
 		},
 		"frontend": map[string]interface{}{
-			"url": "https://auth.samuelcheston.com/",
+			"url": frontendURL,
 		},
 		"keygen": map[string]interface{}{
 			"enable": 0,
@@ -107,6 +108,18 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 			"rate_limit_window_sec":   600,
 			"enable_captcha":          true,
 			"captcha_ttl":             300,
+		},
+		"oauth2": map[string]interface{}{
+			"issuer":                     "https://backend.auth.samuelcheston.com/",
+			"authorization_code_ttl_sec": 300,
+			"access_token_ttl_sec":       3600,
+			"refresh_token_ttl_sec":      2592000,
+			"super_client_id":            "hrpauth-internal-super",
+			"super_client_secret":        sc.generateManageToken(),
+			"public_client_id":           "hrpauth-webui",
+			"public_redirect_uris": []string{
+				frontendURL + "oauth/callback",
+			},
 		},
 		"yggdrasil": map[string]interface{}{
 			"server": map[string]interface{}{

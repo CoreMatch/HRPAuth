@@ -72,6 +72,78 @@ func (Token) TableName() string {
 	return "tokens"
 }
 
+type OAuth2Client struct {
+	ID            uint      `gorm:"primaryKey;autoIncrement;column:id"`
+	ClientID      string    `gorm:"type:varchar(100);uniqueIndex;column:client_id"`
+	ClientSecret  string    `gorm:"type:varchar(255);column:client_secret"`
+	Name          string    `gorm:"type:varchar(255);column:name"`
+	Type          string    `gorm:"type:enum('public','confidential');column:type"`
+	GrantTypes    string    `gorm:"type:text;column:grant_types"`
+	RedirectURIs  string    `gorm:"type:text;column:redirect_uris"`
+	Scopes        string    `gorm:"type:text;column:scopes"`
+	IsInternal    bool      `gorm:"type:tinyint(1);default:0;column:is_internal"`
+	IsSuper       bool      `gorm:"type:tinyint(1);default:0;column:is_super"`
+	IsActive      bool      `gorm:"type:tinyint(1);default:1;column:is_active"`
+	CreatedAt     time.Time `gorm:"column:created_at"`
+	UpdatedAt     time.Time `gorm:"column:updated_at"`
+}
+
+func (OAuth2Client) TableName() string {
+	return "oauth2_clients"
+}
+
+type OAuth2AuthorizationCode struct {
+	ID                  uint      `gorm:"primaryKey;autoIncrement;column:id"`
+	Code                string    `gorm:"type:varchar(255);uniqueIndex;column:code"`
+	ClientID            string    `gorm:"type:varchar(100);column:client_id;index"`
+	UserID              string    `gorm:"type:varchar(32);column:user_id;index"`
+	RedirectURI         string    `gorm:"type:text;column:redirect_uri"`
+	Scopes              string    `gorm:"type:text;column:scopes"`
+	CodeChallenge       string    `gorm:"type:varchar(255);column:code_challenge"`
+	CodeChallengeMethod string    `gorm:"type:varchar(20);column:code_challenge_method"`
+	ExpiresAt           time.Time `gorm:"column:expires_at;index"`
+	ConsumedAt          *time.Time `gorm:"column:consumed_at"`
+	CreatedAt           time.Time `gorm:"column:created_at"`
+}
+
+func (OAuth2AuthorizationCode) TableName() string {
+	return "oauth2_authorization_codes"
+}
+
+type OAuth2AccessToken struct {
+	ID            uint       `gorm:"primaryKey;autoIncrement;column:id"`
+	AccessToken   string     `gorm:"type:varchar(255);uniqueIndex;column:access_token"`
+	ClientID      string     `gorm:"type:varchar(100);column:client_id;index"`
+	UserID        *string    `gorm:"type:varchar(32);column:user_id;index"`
+	Scopes        string     `gorm:"type:text;column:scopes"`
+	SubjectType   string     `gorm:"type:enum('user','service');column:subject_type"`
+	TargetUID     *uint      `gorm:"column:target_uid;index"`
+	TargetEmail   *string    `gorm:"type:varchar(255);column:target_email;index"`
+	ExpiresAt     time.Time  `gorm:"column:expires_at;index"`
+	RevokedAt     *time.Time `gorm:"column:revoked_at"`
+	CreatedAt     time.Time  `gorm:"column:created_at"`
+}
+
+func (OAuth2AccessToken) TableName() string {
+	return "oauth2_access_tokens"
+}
+
+type OAuth2RefreshToken struct {
+	ID            uint       `gorm:"primaryKey;autoIncrement;column:id"`
+	RefreshToken  string     `gorm:"type:varchar(255);uniqueIndex;column:refresh_token"`
+	AccessTokenID uint       `gorm:"column:access_token_id;index"`
+	ClientID      string     `gorm:"type:varchar(100);column:client_id;index"`
+	UserID        string     `gorm:"type:varchar(32);column:user_id;index"`
+	Scopes        string     `gorm:"type:text;column:scopes"`
+	ExpiresAt     time.Time  `gorm:"column:expires_at;index"`
+	RevokedAt     *time.Time `gorm:"column:revoked_at"`
+	CreatedAt     time.Time  `gorm:"column:created_at"`
+}
+
+func (OAuth2RefreshToken) TableName() string {
+	return "oauth2_refresh_tokens"
+}
+
 type Session struct {
 	ID        int       `gorm:"primaryKey;autoIncrement;column:id"`
 	ProfileID string    `gorm:"type:varchar(32);column:profile_id;index"`
