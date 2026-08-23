@@ -51,7 +51,7 @@ func (sc *StartupController) InitializeConfig() error {
 }
 
 func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath string) map[string]interface{} {
-	frontendURL := "https://auth.samuelcheston.com/"
+	frontendURL := "https://auth.mcnb.dev/"
 	return map[string]interface{}{
 		"version": config.ConfigVersion,
 		"site": map[string]interface{}{
@@ -64,7 +64,7 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 			"cors_origin": "*",
 		},
 		"callback": map[string]interface{}{
-			"url": "https://backend.auth.samuelcheston.com/",
+			"url": "https://ha.mcnb.dev/",
 		},
 		"frontend": map[string]interface{}{
 			"url": frontendURL,
@@ -96,7 +96,7 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 			"username":   "",
 			"password":   "",
 			"encryption": "tls",
-			"from_email": "no-reply@samuelcheston.com",
+			"from_email": "no-reply@mcnb.dev",
 			"from_name":  "HRPAuth",
 		},
 		"manage": map[string]interface{}{
@@ -110,7 +110,7 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 			"captcha_ttl":             300,
 		},
 		"oauth2": map[string]interface{}{
-			"issuer":                     "https://backend.auth.samuelcheston.com/",
+			"issuer":                     "https://ha.mcnb.dev/",
 			"authorization_code_ttl_sec": 300,
 			"access_token_ttl_sec":       3600,
 			"refresh_token_ttl_sec":      2592000,
