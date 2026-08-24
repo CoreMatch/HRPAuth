@@ -73,7 +73,10 @@ func (tc *TOTPController) SetupTOTP(c *gin.Context) {
 	user := *authResult.User
 
 	secret := utils.GenerateTOTPSecret(32)
-	database.DB.Model(&user).Update("totp", secret)
+	database.DB.Model(&user).Updates(map[string]interface{}{
+		"totp": secret,
+		"2FA":  true,
+	})
 
 	respondOK(c, "TOTP configured successfully", gin.H{
 		"totpkey": secret,
@@ -156,6 +159,35 @@ func (tc *TOTPController) VerifyTOTP(c *gin.Context) {
 	})
 }
 
+type Toggle2FARequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+func (tc *TOTPController) Toggle2FA(c *gin.Context) {
+	var req Toggle2FARequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
+		return
+	}
+
+	authResult, ok := resolveSiteBearerAuth(c, "totp.toggle", "totp.toggle.as-service", false, "", "")
+	if !ok {
+		return
+	}
+	user := *authResult.User
+
+	if user.TOTP == "" && req.Enabled {
+		respondError(c, http.StatusBadRequest, CodeTOTPNotConfigured, "TOTP not configured, cannot enable 2FA")
+		return
+	}
+
+	database.DB.Model(&user).Update("2FA", req.Enabled)
+
+	respondOK(c, "2FA status updated successfully", gin.H{
+		"enabled": req.Enabled,
+	})
+}
+
 func (tc *TOTPController) HasBeenEnabled(c *gin.Context) {
 	var req HasBeenEnabledRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -175,7 +207,7 @@ func (tc *TOTPController) HasBeenEnabled(c *gin.Context) {
 	user := *authResult.User
 
 	enabled := 0
-	if user.TOTP != "" {
+	if user.TwoFA && user.TOTP != "" {
 		enabled = 1
 	}
 

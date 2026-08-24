@@ -1,0 +1,1 @@
+ALTER TABLE `users` ADD COLUMN `2FA` tinyint(1) NOT NULL DEFAULT 0;

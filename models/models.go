@@ -19,6 +19,7 @@ type User struct {
 	Username      string     `gorm:"type:varchar(255);column:username"`
 	RegIP         string     `gorm:"type:varchar(40);column:regip"`
 	TOTP          string     `gorm:"type:varchar(32);column:totp"`
+	TwoFA         bool       `gorm:"type:tinyint(1);not null;default:0;column:2FA"`
 	CBH           bool       `gorm:"type:tinyint(1);not null;default:1;column:cbh"`
 	// MBE (Mojang Bind Enabled): when 1, an unbound WebUI user accepts a
 	// M.T. /register bind that supplies a mojang_uuid (see Register §3.4 2.a).

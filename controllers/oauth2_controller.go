@@ -90,7 +90,7 @@ func (oc *OAuth2Controller) LoginTicket(c *gin.Context) {
 		return
 	}
 
-	if fullUser.TOTP == "" {
+	if !fullUser.TwoFA || fullUser.TOTP == "" {
 		accessToken, refreshToken, err := oc.oauth2Service.IssueFirstPartyUserTokens(fullUser.UUID)
 		if err != nil {
 			respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to issue OAuth2 token")

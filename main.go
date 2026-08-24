@@ -125,6 +125,7 @@ func main() {
 		api.GET("/totpgen", totpCtrl.Generate)
 		api.POST("/totp/setup", totpCtrl.SetupTOTP)
 		api.POST("/totp/verify", totpCtrl.VerifyTOTP)
+		api.POST("/totp/toggle", totpCtrl.Toggle2FA)
 		api.POST("/totp/hasbeenenabled", totpCtrl.HasBeenEnabled)
 
 		api.POST("/change-username", userProfileCtrl.ChangeUsername)
