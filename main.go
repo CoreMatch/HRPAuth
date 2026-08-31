@@ -144,6 +144,7 @@ func main() {
 		api.POST("/texture/get", textureCtrl.GetTexture)
 
 		api.POST("/services/presence", presenceCtrl.Bonjour)
+		api.GET("/services/list", presenceCtrl.ListFrontendServices)
 	}
 
 	yggdrasil := r.Group("")

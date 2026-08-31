@@ -67,6 +67,7 @@ const (
 	CodeLoginTicketRequired            = "login_ticket_required"
 	CodeInvalidLoginTicket             = "invalid_login_ticket"
 	CodeEndpointDeprecated             = "endpoint_deprecated"
+	CodeServiceNotRegistered           = "service_not_registered"
 	CodeInternalError                  = "internal_error"
 )
 
