@@ -158,6 +158,7 @@ func main() {
 		api.POST("/services/relay", relayCtrl.Register)
 		api.DELETE("/services/relay", relayCtrl.Delete)
 		api.GET("/services/relay", relayCtrl.List)
+		api.GET("/services/sdk/:name", presenceCtrl.GetSDK)
 		api.GET("/services/list", presenceCtrl.ListFrontendServices)
 	}
 
