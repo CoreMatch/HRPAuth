@@ -1,34 +1,87 @@
 package controllers
 
 import (
-	"context"
-	"encoding/json"
 	"net/http"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lnb/HRPAuth-Backend-Go/config"
-	"github.com/lnb/HRPAuth-Backend-Go/redis"
 )
 
-const presenceKeyPrefix = "services:presence:"
-const presenceTTL = 60 * time.Second
+// PresenceRecord 记录一个已注册微服务的存在状态。
+// ExpiresAt 为零值表示该服务永不过期，一直保留到进程结束。
+type PresenceRecord struct {
+	Name      string    `json:"name"`
+	FirstSeen time.Time `json:"first_seen"`
+	LastSeen  time.Time `json:"last_seen"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
 
-type PresenceController struct{}
+// PresenceRegistry 进程内维护所有已注册微服务的存在状态。
+// 程序结束时 registry 随之销毁，天然满足"永不过期即保留到程序结束"。
+type PresenceRegistry struct {
+	mu      sync.RWMutex
+	records map[string]PresenceRecord
+}
+
+func NewPresenceRegistry() *PresenceRegistry {
+	return &PresenceRegistry{records: make(map[string]PresenceRecord)}
+}
+
+// Register 注册或刷新一个服务的心跳。
+// ttlSeconds <= 0 表示永不过期（未指定或显式指定为不过期）。
+func (r *PresenceRegistry) Register(name string, ttlSeconds int) PresenceRecord {
+	now := time.Now()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	record, exists := r.records[name]
+	if !exists {
+		record = PresenceRecord{Name: name, FirstSeen: now}
+	}
+	record.LastSeen = now
+	if ttlSeconds > 0 {
+		record.ExpiresAt = now.Add(time.Duration(ttlSeconds) * time.Second)
+	} else {
+		// 未指定或显式不过期：清除过期时间，永久保留。
+		record.ExpiresAt = time.Time{}
+	}
+	r.records[name] = record
+	return record
+}
+
+// Get 返回指定服务的存在记录。服务不存在或已过期时返回 false，
+// 已过期的记录会被惰性清除。
+func (r *PresenceRegistry) Get(name string) (PresenceRecord, bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	record, exists := r.records[name]
+	if !exists {
+		return PresenceRecord{}, false
+	}
+	if !record.ExpiresAt.IsZero() && time.Now().After(record.ExpiresAt) {
+		delete(r.records, name)
+		return PresenceRecord{}, false
+	}
+	return record, true
+}
+
+type PresenceController struct {
+	registry *PresenceRegistry
+}
 
 func NewPresenceController() *PresenceController {
-	return &PresenceController{}
+	return &PresenceController{registry: NewPresenceRegistry()}
 }
 
 type PresenceRequest struct {
 	Name string `json:"name"`
-}
-
-type PresenceRecord struct {
-	Name      string    `json:"name"`
-	LastSeen  time.Time `json:"last_seen"`
-	FirstSeen time.Time `json:"first_seen"`
+	// TTLSeconds 为服务自定的存在时间（秒）。
+	// 未指定（0）或指定为负数表示永不过期，保留到主服务进程结束。
+	TTLSeconds int `json:"ttl_seconds"`
 }
 
 func (pc *PresenceController) Bonjour(c *gin.Context) {
@@ -39,41 +92,17 @@ func (pc *PresenceController) Bonjour(c *gin.Context) {
 	}
 
 	name := strings.TrimSpace(req.Name)
-	key := config.AppConfig.Redis.Prefix + presenceKeyPrefix + name
-	ctx := context.Background()
+	record := pc.registry.Register(name, req.TTLSeconds)
 
-	existingJSON, err := redis.Client.Get(ctx, key).Result()
-	var firstSeen time.Time
-	now := time.Now()
-
-	if err == nil && existingJSON != "" {
-		var existing PresenceRecord
-		if json.Unmarshal([]byte(existingJSON), &existing) == nil {
-			firstSeen = existing.FirstSeen
-		}
-	}
-	if firstSeen.IsZero() {
-		firstSeen = now
-	}
-
-	record := PresenceRecord{
-		Name:      name,
-		LastSeen:  now,
-		FirstSeen: firstSeen,
-	}
-
-	recordJSON, err := json.Marshal(record)
-	if err != nil {
-		respondError(c, http.StatusInternalServerError, CodeInternalError, "failed to register presence")
-		return
-	}
-
-	if err := redis.Client.Set(ctx, key, string(recordJSON), presenceTTL).Err(); err != nil {
-		respondError(c, http.StatusInternalServerError, CodeInternalError, "failed to register presence")
-		return
+	var expiresAt any
+	if !record.ExpiresAt.IsZero() {
+		expiresAt = record.ExpiresAt
 	}
 
 	respondOK(c, "ca va très bien, merci", gin.H{
-		"service": name,
+		"service":    record.Name,
+		"first_seen": record.FirstSeen,
+		"last_seen":  record.LastSeen,
+		"expires_at": expiresAt,
 	})
 }
