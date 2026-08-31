@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
@@ -337,5 +338,56 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 	respondOK(c, "获取材质信息成功", gin.H{
 		"profile_id": profileID,
 		"textures":   textures,
+	})
+}
+
+type RewriteTextureCallbacksRequest struct {
+	ManageToken string `json:"manage_token"`
+	DryRun      bool   `json:"dry_run"`
+}
+
+// RewriteTextureCallbacks handles POST /texture/rewrite-callback. It rewrites
+// every stored texture URL base to the current config callback.url and
+// re-signs the values. Authenticated by the operator-level Manage Token (M-T)
+// from config.yaml (manage.token). When dry_run is true it only previews the
+// change counts without writing to the database.
+func (tc *TextureController) RewriteTextureCallbacks(c *gin.Context) {
+	manageToken := ""
+	dryRun := false
+
+	contentType := c.ContentType()
+	if strings.Contains(contentType, "application/json") {
+		var req RewriteTextureCallbacksRequest
+		if err := c.ShouldBindJSON(&req); err == nil {
+			manageToken = req.ManageToken
+			dryRun = req.DryRun
+		}
+	}
+
+	if manageToken == "" {
+		manageToken = c.PostForm("manage_token")
+	}
+	if manageToken == "" {
+		manageToken = c.Query("manage_token")
+	}
+	if !dryRun {
+		dryRun = c.PostForm("dry_run") == "true" || c.Query("dry_run") == "true"
+	}
+
+	if config.AppConfig.Manage.Token == "" || manageToken == "" || manageToken != config.AppConfig.Manage.Token {
+		respondError(c, http.StatusUnauthorized, CodeInvalidManageToken, "invalid manage token")
+		return
+	}
+
+	result := tc.textureService.RewriteTextureCallbacks(dryRun)
+
+	respondOK(c, "材质 callback 重写完成", gin.H{
+		"callback_url": result.CallbackURL,
+		"dry_run":      dryRun,
+		"total":        result.Total,
+		"rewritten":    result.Rewritten,
+		"unchanged":    result.Unchanged,
+		"failed":       result.Failed,
+		"errors":       result.Errors,
 	})
 }

@@ -44,10 +44,10 @@ type TextureInfo struct {
 }
 
 type TexturesPayload struct {
-	Timestamp   int64                    `json:"timestamp"`
-	ProfileID   string                   `json:"profileId"`
-	ProfileName string                   `json:"profileName"`
-	Textures    map[string]TextureInfo   `json:"textures"`
+	Timestamp   int64                  `json:"timestamp"`
+	ProfileID   string                 `json:"profileId"`
+	ProfileName string                 `json:"profileName"`
+	Textures    map[string]TextureInfo `json:"textures"`
 }
 
 func (ts *TextureService) ValidateTexture(file io.Reader, textureType string, model string) ([]byte, error) {
@@ -521,6 +521,113 @@ func parseBearerToken(authHeader string) string {
 		return strings.TrimPrefix(authHeader, "Bearer ")
 	}
 	return ""
+}
+
+// TextureCallbackRewriteResult reports the outcome of a callback rewrite run.
+type TextureCallbackRewriteResult struct {
+	Total       int
+	Rewritten   int
+	Unchanged   int
+	Failed      int
+	CallbackURL string
+	Errors      []string
+}
+
+// RewriteTextureCallbacks rewrites every stored texture URL to the current
+// config callback base (config.AppConfig.Callback.URL), preserving the
+// /textures/{hash} suffix. Values are re-encoded and re-signed because the
+// signature covers the whole base64 value.
+//
+// When dryRun is true the payloads are only inspected and counted, nothing is
+// written to the database.
+func (ts *TextureService) RewriteTextureCallbacks(dryRun bool) *TextureCallbackRewriteResult {
+	callbackURL := strings.TrimRight(config.AppConfig.Callback.URL, "/")
+	result := &TextureCallbackRewriteResult{
+		CallbackURL: callbackURL,
+		Errors:      []string{},
+	}
+
+	var props []models.ProfileProperty
+	if err := database.DB.Where("name = ?", "textures").Find(&props).Error; err != nil {
+		result.Failed = 1
+		result.Errors = append(result.Errors, fmt.Sprintf("failed to query texture properties: %v", err))
+		return result
+	}
+	result.Total = len(props)
+
+	for _, prop := range props {
+		changed, err := ts.rewriteTextureProperty(&prop, callbackURL, dryRun)
+		if err != nil {
+			result.Failed++
+			result.Errors = append(result.Errors, fmt.Sprintf("profile %s: %v", prop.ProfileID, err))
+			continue
+		}
+		if changed {
+			result.Rewritten++
+		} else {
+			result.Unchanged++
+		}
+	}
+
+	return result
+}
+
+// rewriteTextureProperty rewrites the texture URLs of a single property row.
+// It returns whether any URL actually changed and, unless dryRun, persists the
+// re-signed value.
+func (ts *TextureService) rewriteTextureProperty(prop *models.ProfileProperty, callbackURL string, dryRun bool) (bool, error) {
+	decoded, err := base64.StdEncoding.DecodeString(prop.Value)
+	if err != nil {
+		return false, fmt.Errorf("failed to decode texture property: %v", err)
+	}
+
+	var payload TexturesPayload
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return false, fmt.Errorf("failed to unmarshal texture payload: %v", err)
+	}
+
+	changed := false
+	for textureType, info := range payload.Textures {
+		if info.URL == "" {
+			continue
+		}
+		// Keep only the /textures/{hash} suffix and swap the base.
+		suffixIdx := strings.LastIndex(info.URL, "/textures/")
+		if suffixIdx < 0 {
+			// Not a callback-style URL; leave it untouched.
+			continue
+		}
+		newURL := callbackURL + info.URL[suffixIdx:]
+		if newURL == info.URL {
+			continue
+		}
+		info.URL = newURL
+		payload.Textures[textureType] = info
+		changed = true
+	}
+
+	if !changed || dryRun {
+		return changed, nil
+	}
+
+	newData, err := json.Marshal(payload)
+	if err != nil {
+		return false, fmt.Errorf("failed to marshal texture payload: %v", err)
+	}
+	newValue := base64.StdEncoding.EncodeToString(newData)
+
+	signature, err := ts.SignTextureValue(newValue)
+	if err != nil {
+		return false, fmt.Errorf("failed to sign texture value: %v", err)
+	}
+
+	prop.Value = newValue
+	prop.Signature = signature
+	if err := database.DB.Save(prop).Error; err != nil {
+		return false, fmt.Errorf("failed to update profile property: %v", err)
+	}
+
+	return true, nil
 }
 
 func (ts *TextureService) GetProfileIDFromTextureURL(textureURL string) (string, error) {
