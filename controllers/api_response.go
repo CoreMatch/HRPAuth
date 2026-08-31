@@ -68,6 +68,8 @@ const (
 	CodeInvalidLoginTicket             = "invalid_login_ticket"
 	CodeEndpointDeprecated             = "endpoint_deprecated"
 	CodeServiceNotRegistered           = "service_not_registered"
+	CodeRelayFailed                    = "relay_failed"
+	CodeRelayNotFound                  = "relay_not_found"
 	CodeInternalError                  = "internal_error"
 )
 

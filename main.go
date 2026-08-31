@@ -70,10 +70,13 @@ func main() {
 
 	presenceRegistry := controllers.NewPresenceRegistry()
 	routeRegistry := controllers.NewRouteRegistry()
+	relayRegistry := controllers.NewRelayRegistry()
 
 	presenceCtrl := controllers.NewPresenceController(presenceRegistry)
 	routeCtrl := controllers.NewRouteController(routeRegistry, presenceRegistry)
+	relayCtrl := controllers.NewRelayController(relayRegistry, presenceRegistry)
 
+	r.Use(controllers.RelayMiddleware(relayRegistry))
 	r.Use(controllers.OrchestrationMiddleware(routeRegistry))
 
 	authCtrl := controllers.NewAuthController()
@@ -152,6 +155,9 @@ func main() {
 
 		api.POST("/services/presence", presenceCtrl.Bonjour)
 		api.POST("/services/route", routeCtrl.Register)
+		api.POST("/services/relay", relayCtrl.Register)
+		api.DELETE("/services/relay", relayCtrl.Delete)
+		api.GET("/services/relay", relayCtrl.List)
 		api.GET("/services/list", presenceCtrl.ListFrontendServices)
 	}
 

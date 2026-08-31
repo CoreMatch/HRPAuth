@@ -91,6 +91,12 @@ func OrchestrationMiddleware(routes *RouteRegistry) gin.HandlerFunc {
 // 目标地址 = 规则 PreURL + 原请求路径，透传查询参数与关键请求头。
 func forwardRequest(c *gin.Context, targetBase string) bool {
 	target := strings.TrimRight(targetBase, "/") + c.Request.URL.Path
+	return forwardTo(c, target)
+}
+
+// forwardTo 将当前请求转发到完整目标地址；成功时把响应写回前端并返回 true。
+// 透传查询参数与关键请求头，供编排层前置路由与 relay 复用。
+func forwardTo(c *gin.Context, target string) bool {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
 		return false
