@@ -68,6 +68,14 @@ func main() {
 	r.Use(CORSMiddleware())
 	r.Use(controllers.RequestIDMiddleware())
 
+	presenceRegistry := controllers.NewPresenceRegistry()
+	routeRegistry := controllers.NewRouteRegistry()
+
+	presenceCtrl := controllers.NewPresenceController(presenceRegistry)
+	routeCtrl := controllers.NewRouteController(routeRegistry, presenceRegistry)
+
+	r.Use(controllers.OrchestrationMiddleware(routeRegistry))
+
 	authCtrl := controllers.NewAuthController()
 	userInfoCtrl := controllers.NewUserInfoController()
 	userProfileCtrl := controllers.NewUserProfileController()
@@ -78,7 +86,6 @@ func main() {
 	yggdrasilCtrl := controllers.NewYggdrasilController()
 	captchaCtrl := controllers.NewCaptchaController()
 	oauth2Ctrl := controllers.NewOAuth2Controller()
-	presenceCtrl := controllers.NewPresenceController()
 
 	if err := services.NewOAuth2Service().EnsureBuiltInClients(); err != nil {
 		log.Fatalf("Failed to ensure OAuth2 built-in clients: %v", err)
@@ -144,6 +151,7 @@ func main() {
 		api.POST("/texture/get", textureCtrl.GetTexture)
 
 		api.POST("/services/presence", presenceCtrl.Bonjour)
+		api.POST("/services/route", routeCtrl.Register)
 		api.GET("/services/list", presenceCtrl.ListFrontendServices)
 	}
 

@@ -146,8 +146,8 @@ type PresenceController struct {
 	registry *PresenceRegistry
 }
 
-func NewPresenceController() *PresenceController {
-	return &PresenceController{registry: NewPresenceRegistry()}
+func NewPresenceController(registry *PresenceRegistry) *PresenceController {
+	return &PresenceController{registry: registry}
 }
 
 type PresenceRequest struct {
