@@ -78,6 +78,7 @@ func main() {
 	yggdrasilCtrl := controllers.NewYggdrasilController()
 	captchaCtrl := controllers.NewCaptchaController()
 	oauth2Ctrl := controllers.NewOAuth2Controller()
+	presenceCtrl := controllers.NewPresenceController()
 
 	if err := services.NewOAuth2Service().EnsureBuiltInClients(); err != nil {
 		log.Fatalf("Failed to ensure OAuth2 built-in clients: %v", err)
@@ -140,6 +141,8 @@ func main() {
 		api.GET("/captcha/enabled", captchaCtrl.Status)
 		api.GET("/captcha/image/:token", captchaCtrl.Image)
 		api.POST("/texture/get", textureCtrl.GetTexture)
+
+		api.POST("/services/presence", presenceCtrl.Bonjour)
 	}
 
 	yggdrasil := r.Group("")
