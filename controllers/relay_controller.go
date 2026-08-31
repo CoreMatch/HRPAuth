@@ -181,7 +181,8 @@ func normalizeDest(dest string) string {
 // RelayMiddleware 是独立于编排层的 relay 转发处理器。
 // 命中 dest 前缀时把请求转发到对应微服务并短路；转发失败返回 502，
 // 不回退主服务（relay 路径归属微服务，主服务无对应处理）。
-func RelayMiddleware(relays *RelayRegistry) gin.HandlerFunc {
+// 转发前校验请求方鉴权级别是否满足该服务的 security_level。
+func RelayMiddleware(relays *RelayRegistry, presence *PresenceRegistry) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// 主服务系统端点不做 relay。
 		if strings.HasPrefix(c.Request.URL.Path, "/services/") {
@@ -195,6 +196,11 @@ func RelayMiddleware(relays *RelayRegistry) gin.HandlerFunc {
 			return
 		}
 
+		if !requireAuthLevel(c, serviceSecurityLevel(presence, rule.Service)) {
+			c.Abort()
+			return
+		}
+
 		target := strings.TrimRight(rule.Source, "/") + rest
 		if forwardTo(c, target) {
 			c.Abort()
@@ -203,4 +209,12 @@ func RelayMiddleware(relays *RelayRegistry) gin.HandlerFunc {
 		respondError(c, http.StatusBadGateway, CodeRelayFailed, "relay forwarding failed")
 		c.Abort()
 	}
+}
+
+// serviceSecurityLevel 返回指定服务的鉴权级别；服务不存在或未声明时按 0（无须）处理。
+func serviceSecurityLevel(presence *PresenceRegistry, service string) int {
+	if record, ok := presence.Get(service); ok {
+		return record.SecurityLevel
+	}
+	return SecurityLevelNone
 }

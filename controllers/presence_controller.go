@@ -21,13 +21,17 @@ type PresenceScope struct {
 // ExpiresAt 为零值表示该服务永不过期，一直保留到进程结束。
 // SDKURL 指向一份 JS 文件，告知目标区域如何使用本服务；
 // 内容由微服务与前端自行协商，主服务不参与，仅负责转发该文件。
+// SecurityLevel 为该服务的鉴权级别（0 无须 / 1 用户级 / 2 运维级）；
+// InteractsWith 声明与其他微服务的交互关系（隐式默认仅与主服务交互）。
 type PresenceRecord struct {
-	Name      string         `json:"name"`
-	Scope     *PresenceScope `json:"scope,omitempty"`
-	SDKURL    string         `json:"sdk_url,omitempty"`
-	FirstSeen time.Time      `json:"first_seen"`
-	LastSeen  time.Time      `json:"last_seen"`
-	ExpiresAt time.Time      `json:"expires_at"`
+	Name          string         `json:"name"`
+	Scope         *PresenceScope `json:"scope,omitempty"`
+	SDKURL        string         `json:"sdk_url,omitempty"`
+	SecurityLevel int            `json:"security_level"`
+	InteractsWith []string       `json:"interacts_with,omitempty"`
+	FirstSeen     time.Time      `json:"first_seen"`
+	LastSeen      time.Time      `json:"last_seen"`
+	ExpiresAt     time.Time      `json:"expires_at"`
 }
 
 // ServiceSummary 是前端可见的微服务概要。
@@ -51,7 +55,8 @@ func NewPresenceRegistry() *PresenceRegistry {
 // Register 注册或刷新一个服务的心跳。
 // ttlSeconds <= 0 表示永不过期（未指定或显式指定为不过期）。
 // scope 可选；传入 nil 表示该服务不声明作用区域。sdkURL 可选。
-func (r *PresenceRegistry) Register(name string, ttlSeconds int, scope *PresenceScope, sdkURL string) PresenceRecord {
+// securityLevel 钳制在 0~2。interactsWith 声明与其他服务的交互关系，可空。
+func (r *PresenceRegistry) Register(name string, ttlSeconds int, scope *PresenceScope, sdkURL string, securityLevel int, interactsWith []string) PresenceRecord {
 	now := time.Now()
 
 	r.mu.Lock()
@@ -68,6 +73,14 @@ func (r *PresenceRegistry) Register(name string, ttlSeconds int, scope *Presence
 	if sdkURL != "" {
 		record.SDKURL = sdkURL
 	}
+	if securityLevel < SecurityLevelNone {
+		securityLevel = SecurityLevelNone
+	}
+	if securityLevel > SecurityLevelOps {
+		securityLevel = SecurityLevelOps
+	}
+	record.SecurityLevel = securityLevel
+	record.InteractsWith = interactsWith
 	if ttlSeconds > 0 {
 		record.ExpiresAt = now.Add(time.Duration(ttlSeconds) * time.Second)
 	} else {
@@ -168,6 +181,10 @@ type PresenceRequest struct {
 	// SDKURL 为指向 JS 文件的地址，用于告知目标区域如何使用本服务；
 	// 内容由微服务与前端自行协商，主服务仅负责转发。可选。
 	SDKURL string `json:"sdk_url"`
+	// SecurityLevel 为该服务的鉴权级别：0 无须 / 1 用户级 / 2 运维级。默认 0。
+	SecurityLevel int `json:"security_level"`
+	// InteractsWith 声明与其他微服务的交互关系；隐式默认仅与主服务交互。
+	InteractsWith []string `json:"interacts_with"`
 }
 
 func (pc *PresenceController) Bonjour(c *gin.Context) {
@@ -178,7 +195,7 @@ func (pc *PresenceController) Bonjour(c *gin.Context) {
 	}
 
 	name := strings.TrimSpace(req.Name)
-	record := pc.registry.Register(name, req.TTLSeconds, req.Scope, strings.TrimSpace(req.SDKURL))
+	record := pc.registry.Register(name, req.TTLSeconds, req.Scope, strings.TrimSpace(req.SDKURL), req.SecurityLevel, req.InteractsWith)
 
 	var expiresAt any
 	if !record.ExpiresAt.IsZero() {

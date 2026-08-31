@@ -71,6 +71,7 @@ const (
 	CodeRelayFailed                    = "relay_failed"
 	CodeRelayNotFound                  = "relay_not_found"
 	CodeSDKNotFound                    = "sdk_not_found"
+	CodeInsufficientAuthLevel          = "insufficient_auth_level"
 	CodeInternalError                  = "internal_error"
 )
 

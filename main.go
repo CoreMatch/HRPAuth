@@ -76,8 +76,8 @@ func main() {
 	routeCtrl := controllers.NewRouteController(routeRegistry, presenceRegistry)
 	relayCtrl := controllers.NewRelayController(relayRegistry, presenceRegistry)
 
-	r.Use(controllers.RelayMiddleware(relayRegistry))
-	r.Use(controllers.OrchestrationMiddleware(routeRegistry))
+	r.Use(controllers.RelayMiddleware(relayRegistry, presenceRegistry))
+	r.Use(controllers.OrchestrationMiddleware(routeRegistry, presenceRegistry))
 
 	authCtrl := controllers.NewAuthController()
 	userInfoCtrl := controllers.NewUserInfoController()
