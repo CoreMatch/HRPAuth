@@ -328,7 +328,7 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 		// 2.a bind: user exists with no mojang_uuid; M.T. supplies one.
 		// Per mbe (Mojang Bind Enabled):
 		//   mbe=0 → reject: HA priority, Mojang player cannot claim this username.
-		//   mbe=1 → bind: only set mojang_uuid + last_sign_at; preserve
+		//   mbe=1 → bind: set mojang_uuid + last_sign_at, reset mbe=0; preserve
 		//             password/email/cbh (the WebUI user's credentials are kept).
 		if !byUsername.MBE {
 			respondError(c, http.StatusConflict, CodeUsernameAlreadyBound, "Username already bound")
@@ -337,6 +337,7 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 		if err := database.DB.Model(&byUsername).Updates(map[string]interface{}{
 			"mojang_uuid":  mojangUUID,
 			"last_sign_at": now,
+			"mbe":          false,
 		}).Error; err != nil {
 			respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to bind mojang_uuid")
 			return
