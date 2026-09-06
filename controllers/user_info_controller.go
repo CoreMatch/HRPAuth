@@ -73,6 +73,7 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 		"username": user.Username,
 		"avatar":   user.Avatar,
 		"verified": user.Verified,
+		"mbe":      user.MBE,
 	}
 
 	respondOK(c, "获取用户信息成功", userData)
@@ -199,5 +200,51 @@ func (uc *UserInfoController) EnableMojangBind(c *gin.Context) {
 	respondOK(c, "Mojang bind enabled", gin.H{
 		"uid": user.UID,
 		"mbe": 1,
+	})
+}
+
+// DisableMojangBind sets users.mbe = 0 so that a M.T. /register from a Mojang
+// player colliding on this username will return 409 (HA priority) instead of
+// binding.
+//
+// The user opts in themselves via their Bearer token, or a service token
+// disables it on a target user. Idempotent: calling when mbe is already 0 is a
+// no-op success.
+func (uc *UserInfoController) DisableMojangBind(c *gin.Context) {
+	var req GetUserRequest
+	uid := ""
+	email := ""
+
+	if err := c.ShouldBindJSON(&req); err == nil {
+		uid = req.UID
+		email = req.Email
+	}
+	if uid == "" {
+		uid = c.PostForm("uid")
+	}
+	if email == "" {
+		email = c.PostForm("email")
+	}
+	if uid == "" {
+		uid = c.Query("uid")
+	}
+	if email == "" {
+		email = c.Query("email")
+	}
+
+	authResult, ok := resolveSiteBearerAuth(c, "user.mojang-bind-disable", "user.mojang-bind-disable.as-service", false, uid, email)
+	if !ok {
+		return
+	}
+	user := *authResult.User
+
+	if err := database.DB.Model(&user).Update("mbe", false).Error; err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to disable mojang bind")
+		return
+	}
+
+	respondOK(c, "Mojang bind disabled", gin.H{
+		"uid": user.UID,
+		"mbe": 0,
 	})
 }
