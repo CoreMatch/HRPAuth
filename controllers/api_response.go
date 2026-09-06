@@ -28,6 +28,7 @@ const (
 	CodeInvalidRememberToken           = "invalid_remember_token"
 	CodeManageTargetRequired           = "manage_target_required"
 	CodeUserNotFound                   = "user_not_found"
+	CodeUserNotClaimable               = "user_not_claimable"
 	CodeUsernameTooShort               = "username_too_short"
 	CodePasswordTooShort               = "password_too_short"
 	CodeUsernameAlreadyTaken           = "username_already_taken"

@@ -49,6 +49,15 @@ type LoginByMTRequest struct {
 	ManageToken string `json:"manage_token"`
 }
 
+// ClaimUserRequest is the body for POST /admin/claim-user. Operators provide
+// the Mojang UUID of a proxy-registered user (cbh=0) along with the credentials
+// (email + password) the user wants to use for subsequent WebUI login.
+type ClaimUserRequest struct {
+	MojangUUID string `json:"mojang_uuid"`
+	Email      string `json:"email"`
+	Password   string `json:"password"`
+}
+
 func isValidEmail(email string) bool {
 	_, err := mail.ParseAddress(email)
 	return err == nil
@@ -424,4 +433,108 @@ func (ac *AuthController) Logout(c *gin.Context) {
 // identified by UID or Email, authenticated by the operator-level M-T.
 func (ac *AuthController) LoginByMT(c *gin.Context) {
 	respondError(c, http.StatusGone, CodeEndpointDeprecated, "POST /loginbymt is deprecated; use OAuth2 client_credentials instead")
+}
+
+// ClaimUser handles POST /admin/claim-user. It lets an operator (authenticated
+// via OAuth2 Service Token with scope user.claim.as-service) take a proxy-
+// registered user (cbh=0) and assign them a real email + password so that the
+// user can log in to the business system via WebUI.
+//
+// Pre-conditions:
+//   - Caller must present a Service Token with scope user.claim.as-service.
+//   - The target user must exist, must be a proxy registration (cbh=0), and
+//     must already have a mojang_uuid bound.
+//   - email must be a valid email address; password must satisfy the same
+//     minimum-length rule as WebUI registration.
+//
+// On success: email is updated, password is re-hashed (bcrypt), cbh is flipped
+// from 0 to 1 (so the user is no longer eligible for bot-user cleanup), and
+// any active MBE timeout is cancelled.
+func (ac *AuthController) ClaimUser(c *gin.Context) {
+	accessToken := bearerTokenFromRequest(c)
+	if accessToken == "" {
+		respondError(c, http.StatusUnauthorized, CodeOAuthLoginRequired, "missing bearer token")
+		return
+	}
+	tokenContext, err := services.NewOAuth2Service().ResolveAccessToken(accessToken)
+	if err != nil {
+		respondError(c, http.StatusUnauthorized, CodeOAuthInvalidGrant, "invalid access token")
+		return
+	}
+	if !tokenContext.IsService {
+		respondError(c, http.StatusForbidden, CodeOAuthAccessDenied, "claim-user requires a service token")
+		return
+	}
+	if !hasScope(tokenContext.Scopes, "user.claim.as-service") {
+		respondError(c, http.StatusForbidden, CodeOAuthInsufficientScope, "insufficient scope")
+		return
+	}
+
+	var req ClaimUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
+		return
+	}
+
+	mojangUUID := strings.ToLower(strings.TrimSpace(req.MojangUUID))
+	if !isValidMojangUUID(mojangUUID) {
+		respondError(c, http.StatusBadRequest, CodeInvalidMojangUUID, "Invalid mojang_uuid")
+		return
+	}
+	if !isValidEmail(req.Email) {
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
+		return
+	}
+	if len(req.Password) < 6 {
+		respondError(c, http.StatusBadRequest, CodePasswordTooShort, "Password too short")
+		return
+	}
+
+	// Email uniqueness: a freshly claimed user must not collide with an
+	// existing account's email (proxy registrations use placeholder emails,
+	// so collisions on the placeholder domain are theoretically possible).
+	var emailCount int64
+	database.DB.Model(&models.User{}).Where("email = ?", req.Email).Count(&emailCount)
+	if emailCount > 0 {
+		respondError(c, http.StatusConflict, CodeEmailAlreadyRegistered, "Email already registered")
+		return
+	}
+
+	hash, err := utils.HashPassword(req.Password)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Password hashing failed")
+		return
+	}
+
+	var target models.User
+	if err := database.DB.Where("mojang_uuid = ?", mojangUUID).First(&target).Error; err != nil {
+		respondError(c, http.StatusNotFound, CodeUserNotFound, "user not found")
+		return
+	}
+	if target.CBH {
+		respondError(c, http.StatusConflict, CodeUserNotClaimable, "user is not a proxy-registered account")
+		return
+	}
+	if target.MojangUUID == nil || *target.MojangUUID != mojangUUID {
+		respondError(c, http.StatusConflict, CodeUserNotClaimable, "mojang_uuid does not match the bound user")
+		return
+	}
+
+	if err := database.DB.Model(&target).Updates(map[string]interface{}{
+		"email":    req.Email,
+		"password": hash,
+		"cbh":      true,
+		"verified": true,
+		"mbe":      false,
+	}).Error; err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to claim user")
+		return
+	}
+	CancelMBETimeout(target.UID)
+
+	respondOK(c, "User claimed", gin.H{
+		"uid":      target.UID,
+		"username": target.Username,
+		"email":    req.Email,
+	})
 }
