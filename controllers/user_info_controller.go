@@ -197,6 +197,8 @@ func (uc *UserInfoController) EnableMojangBind(c *gin.Context) {
 		return
 	}
 
+	RegisterMBETimeout(user.UID)
+
 	respondOK(c, "Mojang bind enabled", gin.H{
 		"uid": user.UID,
 		"mbe": 1,
@@ -242,6 +244,8 @@ func (uc *UserInfoController) DisableMojangBind(c *gin.Context) {
 		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to disable mojang bind")
 		return
 	}
+
+	CancelMBETimeout(user.UID)
 
 	respondOK(c, "Mojang bind disabled", gin.H{
 		"uid": user.UID,

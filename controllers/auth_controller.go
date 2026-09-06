@@ -341,6 +341,7 @@ func (ac *AuthController) handleManageRegister(c *gin.Context, username, email, 
 			respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to bind mojang_uuid")
 			return
 		}
+		CancelMBETimeout(byUsername.UID)
 		profile, _ := authService.GetOrCreateProfileForUser(byUsername.UUID, byUsername.Username)
 		cleanupTriggered = true
 		respondOK(c, "Register successful", gin.H{

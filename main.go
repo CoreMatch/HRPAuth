@@ -63,6 +63,8 @@ func main() {
 	sessionCleanupCtrl := controllers.NewSessionCleanupController()
 	sessionCleanupCtrl.Start(24 * time.Hour)
 
+	controllers.StartMBETimeoutLoop(30 * time.Second)
+
 	r := gin.Default()
 
 	r.Use(CORSMiddleware())
