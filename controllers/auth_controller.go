@@ -50,12 +50,12 @@ type LoginByMTRequest struct {
 }
 
 // ClaimUserRequest is the body for POST /admin/claim-user. Operators provide
-// the Mojang UUID of a proxy-registered user (cbh=0) along with the credentials
+// the username of a proxy-registered user (cbh=0) along with the credentials
 // (email + password) the user wants to use for subsequent WebUI login.
 type ClaimUserRequest struct {
-	MojangUUID string `json:"mojang_uuid"`
-	Email      string `json:"email"`
-	Password   string `json:"password"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Password string `json:"password"`
 }
 
 func isValidEmail(email string) bool {
@@ -443,13 +443,12 @@ func (ac *AuthController) LoginByMT(c *gin.Context) {
 // Pre-conditions:
 //   - Caller must present a Service Token with scope user.claim.as-service.
 //   - The target user must exist, must be a proxy registration (cbh=0), and
-//     must already have a mojang_uuid bound.
+//     is matched by username.
 //   - email must be a valid email address; password must satisfy the same
 //     minimum-length rule as WebUI registration.
 //
-// On success: email is updated, password is re-hashed (bcrypt), cbh is flipped
-// from 0 to 1 (so the user is no longer eligible for bot-user cleanup), and
-// any active MBE timeout is cancelled.
+// On success: email is updated, password is re-hashed (bcrypt), and cbh is
+// flipped from 0 to 1 (so the user is no longer eligible for bot-user cleanup).
 func (ac *AuthController) ClaimUser(c *gin.Context) {
 	accessToken := bearerTokenFromRequest(c)
 	if accessToken == "" {
@@ -476,9 +475,9 @@ func (ac *AuthController) ClaimUser(c *gin.Context) {
 		return
 	}
 
-	mojangUUID := strings.ToLower(strings.TrimSpace(req.MojangUUID))
-	if !isValidMojangUUID(mojangUUID) {
-		respondError(c, http.StatusBadRequest, CodeInvalidMojangUUID, "Invalid mojang_uuid")
+	username := strings.TrimSpace(req.Username)
+	if len(username) < 3 {
+		respondError(c, http.StatusBadRequest, CodeUsernameTooShort, "Username too short")
 		return
 	}
 	if !isValidEmail(req.Email) {
@@ -507,16 +506,12 @@ func (ac *AuthController) ClaimUser(c *gin.Context) {
 	}
 
 	var target models.User
-	if err := database.DB.Where("mojang_uuid = ?", mojangUUID).First(&target).Error; err != nil {
+	if err := database.DB.Where("username = ?", username).First(&target).Error; err != nil {
 		respondError(c, http.StatusNotFound, CodeUserNotFound, "user not found")
 		return
 	}
 	if target.CBH {
 		respondError(c, http.StatusConflict, CodeUserNotClaimable, "user is not a proxy-registered account")
-		return
-	}
-	if target.MojangUUID == nil || *target.MojangUUID != mojangUUID {
-		respondError(c, http.StatusConflict, CodeUserNotClaimable, "mojang_uuid does not match the bound user")
 		return
 	}
 
@@ -525,12 +520,10 @@ func (ac *AuthController) ClaimUser(c *gin.Context) {
 		"password": hash,
 		"cbh":      true,
 		"verified": true,
-		"mbe":      false,
 	}).Error; err != nil {
 		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to claim user")
 		return
 	}
-	CancelMBETimeout(target.UID)
 
 	respondOK(c, "User claimed", gin.H{
 		"uid":      target.UID,
