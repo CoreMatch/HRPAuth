@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/config"
 )
 
 // PresenceScope 是微服务声明的作用区域。
@@ -225,6 +226,16 @@ func (pc *PresenceController) ListFrontendServices(c *gin.Context) {
 	if !ok {
 		respondError(c, http.StatusBadRequest, CodeServiceNotRegistered, "frontend service not registered or not declared as frontend")
 		return
+	}
+
+	// 将微服务的内网 sdk_url 转换为主服务公网的 relay 路径，避免向浏览器泄露内部地址。
+	base := strings.TrimRight(config.AppConfig.Callback.URL, "/")
+	if base != "" {
+		for i, svc := range services {
+			if svc.SDKURL != "" {
+				services[i].SDKURL = base + "/services/sdk/" + svc.Name
+			}
+		}
 	}
 
 	respondOK(c, "services fetched", services)
