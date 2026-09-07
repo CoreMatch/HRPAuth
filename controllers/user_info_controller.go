@@ -75,6 +75,9 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 		"verified": user.Verified,
 		"mbe":      user.MBE,
 	}
+	if user.MojangUUID != nil {
+		userData["mojang_uuid"] = *user.MojangUUID
+	}
 
 	respondOK(c, "获取用户信息成功", userData)
 }
