@@ -24,6 +24,11 @@ type Config struct {
 	SMTP             SMTPConfig
 	Manage           ManageConfig
 	Yggdrasil        YggdrasilConfig
+	Storage          StorageConfig
+}
+
+type StorageConfig struct {
+	OrphanFileExpiryDays int
 }
 
 type ServerRuntimeConfig struct {
@@ -155,7 +160,7 @@ type FeatureFlagsConfig struct {
 
 const ConfigFileName = "config.yaml"
 const ConfigFileDir = "./"
-const ConfigVersion = "5"
+const ConfigVersion = "6"
 
 var AppConfig *Config
 
@@ -199,6 +204,7 @@ func Load() {
 		SMTP:             parseSMTPConfig(yamlConfig),
 		Manage:           parseManageConfig(yamlConfig),
 		Yggdrasil:        parseYggdrasilConfig(yamlConfig),
+		Storage:          parseStorageConfig(yamlConfig),
 	}
 
 	log.Println("Configuration loaded successfully")
@@ -289,6 +295,17 @@ func parseManageConfig(config map[string]interface{}) ManageConfig {
 	manage, _ := config["manage"].(map[string]interface{})
 	return ManageConfig{
 		Token: getString(manage, "token"),
+	}
+}
+
+func parseStorageConfig(config map[string]interface{}) StorageConfig {
+	storage, _ := config["storage"].(map[string]interface{})
+	orphanExpiryDays := getInt(storage, "orphan_file_expiry_days")
+	if orphanExpiryDays == 0 {
+		orphanExpiryDays = 7
+	}
+	return StorageConfig{
+		OrphanFileExpiryDays: orphanExpiryDays,
 	}
 }
 

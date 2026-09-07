@@ -36,7 +36,7 @@ func TestMigrateConfigUpToDate(t *testing.T) {
 }
 
 func TestMigrateConfigFutureVersion(t *testing.T) {
-	cfg := map[string]interface{}{"version": "6", "site": map[string]interface{}{"name": "future"}}
+	cfg := map[string]interface{}{"version": "7", "site": map[string]interface{}{"name": "future"}}
 	out, changed, err := MigrateConfig(cfg, tokenGen)
 	if err != nil {
 		t.Fatalf("future version must warn and continue, got error: %v", err)
@@ -44,7 +44,7 @@ func TestMigrateConfigFutureVersion(t *testing.T) {
 	if changed {
 		t.Fatal("expected no migration for a newer config")
 	}
-	if out["version"] != "6" {
+	if out["version"] != "7" {
 		t.Fatalf("expected untouched version, got %v", out["version"])
 	}
 }
@@ -289,5 +289,99 @@ func TestMigrateV4ToV5PreservesExistingFileSize(t *testing.T) {
 	ySec := out["yggdrasil"].(map[string]interface{})["security"].(map[string]interface{})
 	if ySec["max_texture_file_size"] != 1048576 {
 		t.Errorf("existing max_texture_file_size must be preserved, got %v", ySec["max_texture_file_size"])
+	}
+}
+
+func TestMigrateV5ToV6AddsOrphanFileExpiryDays(t *testing.T) {
+	cfg := map[string]interface{}{
+		"version": "5",
+		"yggdrasil": map[string]interface{}{
+			"security": map[string]interface{}{
+				"max_texture_file_size": 512000,
+			},
+		},
+	}
+
+	out, changed, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected migration to run")
+	}
+	if out["version"] != ConfigVersion {
+		t.Fatalf("expected version %q, got %v", ConfigVersion, out["version"])
+	}
+
+	storage, ok := out["storage"].(map[string]interface{})
+	if !ok {
+		t.Fatal("storage section missing after v5->v6")
+	}
+	if storage["orphan_file_expiry_days"] != 7 {
+		t.Errorf("expected orphan_file_expiry_days 7, got %v", storage["orphan_file_expiry_days"])
+	}
+}
+
+func TestMigrateV5ToV6PreservesExistingOrphanFileExpiryDays(t *testing.T) {
+	cfg := map[string]interface{}{
+		"version": "5",
+		"storage": map[string]interface{}{
+			"orphan_file_expiry_days": 14,
+		},
+	}
+
+	out, changed, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected migration to run")
+	}
+
+	storage := out["storage"].(map[string]interface{})
+	if storage["orphan_file_expiry_days"] != 14 {
+		t.Errorf("existing orphan_file_expiry_days must be preserved, got %v", storage["orphan_file_expiry_days"])
+	}
+}
+
+func TestMigrateV1ChainToV6(t *testing.T) {
+	cfg := map[string]interface{}{
+		"version": "1.0",
+		"memcache": map[string]interface{}{
+			"host":        "127.0.0.1",
+			"port":        11211,
+			"prefix":      "hrpauth_",
+			"code_ttl":    123,
+			"storage_dir": "./cache/vcodes",
+		},
+		"yggdrasil": map[string]interface{}{
+			"security": map[string]interface{}{
+				"password_cost":           12,
+				"rate_limit_max_attempts": 5,
+				"enable_captcha":          false,
+				"captcha_ttl":             99,
+				"token_expiry_days":       7,
+			},
+		},
+	}
+
+	out, changed, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected chain migration to run")
+	}
+	if out["version"] != ConfigVersion {
+		t.Fatalf("expected final version %q, got %v", ConfigVersion, out["version"])
+	}
+
+	// v6: storage section with default orphan_file_expiry_days
+	storage, ok := out["storage"].(map[string]interface{})
+	if !ok {
+		t.Fatal("storage section missing after v1->v6 chain")
+	}
+	if storage["orphan_file_expiry_days"] != 7 {
+		t.Errorf("expected orphan_file_expiry_days 7, got %v", storage["orphan_file_expiry_days"])
 	}
 }

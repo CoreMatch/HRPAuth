@@ -26,12 +26,14 @@ type ConfigMigration struct {
 //     top-level security, manage.token introduced
 //   - "4":   oauth2 section introduced for site-side OAuth2 authorization
 //   - "5":   yggdrasil.security.max_texture_file_size added (default 512000)
+//   - "6":   top-level storage section with orphan_file_expiry_days (default 7)
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
 		{FromVersion: "2", ToVersion: "3", Migrate: migrateV2ToV3},
 		{FromVersion: "3", ToVersion: "4", Migrate: migrateV3ToV4},
 		{FromVersion: "4", ToVersion: "5", Migrate: migrateV4ToV5},
+		{FromVersion: "5", ToVersion: "6", Migrate: migrateV5ToV6},
 	}
 }
 
@@ -304,5 +306,19 @@ func migrateV4ToV5(cfg map[string]interface{}, tokenGen func() string) error {
 	}
 	ygg["security"] = sec
 	cfg["version"] = "5"
+	return nil
+}
+
+// migrateV5ToV6 adds the top-level storage section with orphan_file_expiry_days.
+func migrateV5ToV6(cfg map[string]interface{}, tokenGen func() string) error {
+	storage, _ := cfg["storage"].(map[string]interface{})
+	if storage == nil {
+		storage = map[string]interface{}{}
+	}
+	if _, exists := storage["orphan_file_expiry_days"]; !exists {
+		storage["orphan_file_expiry_days"] = 7
+	}
+	cfg["storage"] = storage
+	cfg["version"] = "6"
 	return nil
 }
