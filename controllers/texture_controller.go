@@ -419,6 +419,66 @@ type mojangTexturesPayload struct {
 
 var mojangHTTPClient = &http.Client{Timeout: 15 * time.Second}
 
+// FetchMojangProfile handles GET /mojang/profile/:uuid
+// It fetches the player profile from Mojang's session server and returns the
+// player's id, name and whether a cape is available.
+//
+// This is a public endpoint (no auth required).
+func (tc *TextureController) FetchMojangProfile(c *gin.Context) {
+	uuid := c.Param("uuid")
+	uuid = strings.ReplaceAll(uuid, "-", "")
+
+	if len(uuid) != 32 {
+		respondError(c, http.StatusBadRequest, CodeInvalidMojangUUID, "无效的 Mojang UUID")
+		return
+	}
+
+	sessionURL := "https://sessionserver.mojang.com/session/minecraft/profile/" + uuid
+	resp, err := mojangHTTPClient.Get(sessionURL)
+	if err != nil {
+		respondError(c, http.StatusBadGateway, CodeTextureFetchFailed, "无法连接 Mojang Session Server: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+		respondError(c, http.StatusNotFound, CodeUserNotFound, "该 UUID 在 Mojang 服务器上不存在")
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		respondError(c, http.StatusBadGateway, CodeTextureFetchFailed, "Mojang Session Server 返回错误状态码")
+		return
+	}
+
+	var profile mojangSessionProfileResponse
+	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
+		respondError(c, http.StatusBadGateway, CodeTextureFetchFailed, "解析 Mojang Profile 失败")
+		return
+	}
+
+	hasCape := false
+	for _, p := range profile.Properties {
+		if p.Name == "textures" {
+			decoded, err := base64.StdEncoding.DecodeString(p.Value)
+			if err != nil {
+				break
+			}
+			var texturesPayload mojangTexturesPayload
+			if err := json.Unmarshal(decoded, &texturesPayload); err != nil {
+				break
+			}
+			hasCape = texturesPayload.Textures.Cape != nil
+			break
+		}
+	}
+
+	respondOK(c, "获取 Mojang Profile 成功", gin.H{
+		"id":       profile.ID,
+		"name":     profile.Name,
+		"has_cape": hasCape,
+	})
+}
+
 // FetchMojangTexture handles GET /texture/mojang/:uuid
 // It fetches the player profile from Mojang's session server, downloads the
 // skin (or cape) texture, and returns the raw PNG to the caller.
