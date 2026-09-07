@@ -1,9 +1,12 @@
 package controllers
 
 import (
+	"encoding/base64"
+	"encoding/json"
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
@@ -390,4 +393,143 @@ func (tc *TextureController) RewriteTextureCallbacks(c *gin.Context) {
 		"failed":       result.Failed,
 		"errors":       result.Errors,
 	})
+}
+
+type mojangSessionProfileResponse struct {
+	ID         string `json:"id"`
+	Name       string `json:"name"`
+	Properties []struct {
+		Name      string `json:"name"`
+		Value     string `json:"value"`
+		Signature string `json:"signature"`
+	} `json:"properties"`
+}
+
+type mojangTexturesPayload struct {
+	Textures struct {
+		Skin *struct {
+			URL      string                 `json:"url"`
+			Metadata map[string]interface{} `json:"metadata,omitempty"`
+		} `json:"SKIN,omitempty"`
+		Cape *struct {
+			URL string `json:"url"`
+		} `json:"CAPE,omitempty"`
+	} `json:"textures"`
+}
+
+var mojangHTTPClient = &http.Client{Timeout: 15 * time.Second}
+
+// FetchMojangTexture handles GET /texture/mojang/:uuid
+// It fetches the player profile from Mojang's session server, downloads the
+// skin (or cape) texture, and returns the raw PNG to the caller.
+//
+// Query params:
+//
+//	type – "skin" (default) or "cape"
+func (tc *TextureController) FetchMojangTexture(c *gin.Context) {
+	uuid := c.Param("uuid")
+	// Remove hyphens if the caller provided a formatted UUID
+	uuid = strings.ReplaceAll(uuid, "-", "")
+
+	if len(uuid) != 32 {
+		respondError(c, http.StatusBadRequest, CodeInvalidMojangUUID, "无效的 Mojang UUID")
+		return
+	}
+
+	textureType := strings.ToLower(c.DefaultQuery("type", "skin"))
+	if textureType != "skin" && textureType != "cape" {
+		respondError(c, http.StatusBadRequest, CodeTextureTypeInvalid, "无效的材质类型，只能是 skin 或 cape")
+		return
+	}
+
+	// 1. Call Mojang session server to get profile with properties
+	sessionURL := "https://sessionserver.mojang.com/session/minecraft/profile/" + uuid
+	resp, err := mojangHTTPClient.Get(sessionURL)
+	if err != nil {
+		respondError(c, http.StatusBadGateway, CodeTextureFetchFailed, "无法连接 Mojang Session Server: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNoContent || resp.StatusCode == http.StatusNotFound {
+		respondError(c, http.StatusNotFound, CodeUserNotFound, "该 UUID 在 Mojang 服务器上不存在")
+		return
+	}
+	if resp.StatusCode != http.StatusOK {
+		respondError(c, http.StatusBadGateway, CodeTextureFetchFailed, "Mojang Session Server 返回错误状态码")
+		return
+	}
+
+	var profile mojangSessionProfileResponse
+	if err := json.NewDecoder(resp.Body).Decode(&profile); err != nil {
+		respondError(c, http.StatusBadGateway, CodeTextureFetchFailed, "解析 Mojang Profile 失败")
+		return
+	}
+
+	// 2. Find and decode the textures property
+	var texturesValue string
+	for _, p := range profile.Properties {
+		if p.Name == "textures" {
+			texturesValue = p.Value
+			break
+		}
+	}
+	if texturesValue == "" {
+		respondError(c, http.StatusNotFound, CodeTextureFetchFailed, "该玩家没有材质信息")
+		return
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(texturesValue)
+	if err != nil {
+		respondError(c, http.StatusBadGateway, CodeTextureFetchFailed, "解码材质数据失败")
+		return
+	}
+
+	var texturesPayload mojangTexturesPayload
+	if err := json.Unmarshal(decoded, &texturesPayload); err != nil {
+		respondError(c, http.StatusBadGateway, CodeTextureFetchFailed, "解析材质数据失败")
+		return
+	}
+
+	var textureURL string
+	switch textureType {
+	case "skin":
+		if texturesPayload.Textures.Skin == nil {
+			respondError(c, http.StatusNotFound, CodeTextureFetchFailed, "该玩家没有皮肤材质")
+			return
+		}
+		textureURL = texturesPayload.Textures.Skin.URL
+	case "cape":
+		if texturesPayload.Textures.Cape == nil {
+			respondError(c, http.StatusNotFound, CodeTextureFetchFailed, "该玩家没有披风材质")
+			return
+		}
+		textureURL = texturesPayload.Textures.Cape.URL
+	}
+
+	// 3. Download the actual texture PNG
+	textureResp, err := mojangHTTPClient.Get(textureURL)
+	if err != nil {
+		respondError(c, http.StatusBadGateway, CodeTextureFetchFailed, "下载材质文件失败: "+err.Error())
+		return
+	}
+	defer textureResp.Body.Close()
+
+	if textureResp.StatusCode != http.StatusOK {
+		respondError(c, http.StatusBadGateway, CodeTextureFetchFailed, "材质文件下载失败，状态码: "+http.StatusText(textureResp.StatusCode))
+		return
+	}
+
+	contentType := textureResp.Header.Get("Content-Type")
+	if contentType == "" {
+		contentType = "image/png"
+	}
+
+	c.Header("Content-Type", contentType)
+	c.Header("Cache-Control", "public, max-age=300")
+	c.Status(http.StatusOK)
+	if _, err := io.Copy(c.Writer, textureResp.Body); err != nil {
+		// Headers already sent; log only.
+		_ = err
+	}
 }

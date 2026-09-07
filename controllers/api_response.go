@@ -39,6 +39,7 @@ const (
 	CodeTextureUploadFailed            = "texture_upload_failed"
 	CodeTextureDeleteFailed            = "texture_delete_failed"
 	CodeTextureReadFailed              = "texture_read_failed"
+	CodeTextureFetchFailed             = "texture_fetch_failed"
 	CodeProfileNotFound                = "profile_not_found"
 	CodeProfileAccessDenied            = "profile_access_denied"
 	CodeProfileNameInvalid             = "invalid_profile_name"

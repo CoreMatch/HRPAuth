@@ -151,6 +151,7 @@ func main() {
 		api.POST("/texture/upload", textureCtrl.UploadTexture)
 		api.POST("/texture/delete", textureCtrl.DeleteTexture)
 		api.POST("/texture/rewrite-callback", textureCtrl.RewriteTextureCallbacks)
+		api.GET("/texture/mojang/:uuid", textureCtrl.FetchMojangTexture)
 
 		api.POST("/captcha", captchaCtrl.Generate)
 		api.GET("/captcha/enabled", captchaCtrl.Status)
