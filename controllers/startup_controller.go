@@ -136,11 +136,12 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 				"skin_domains": []string{},
 			},
 			"security": map[string]interface{}{
-				"token_expiry_days":      15,
-				"session_expiry_seconds": 28800,
-				"max_texture_width":      1024,
-				"max_texture_height":     1024,
-			},
+			"token_expiry_days":      15,
+			"session_expiry_seconds": 28800,
+			"max_texture_width":      1024,
+			"max_texture_height":     1024,
+			"max_tokens_per_user":    10,
+		},
 			"feature_flags": map[string]interface{}{
 				"non_email_login":             true,
 				"legacy_skin_api":             true,

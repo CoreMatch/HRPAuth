@@ -503,6 +503,59 @@ func (ts *TextureService) GetTextureByProfile(profileID, textureType string) (*T
 	return &textureInfo, nil
 }
 
+// GetSkinTextureURLByProfileName resolves the SKIN texture URL stored in a
+// profile's textures property and returns the on-disk file path, ready for
+// HTTP serving. Used by the legacy skin API
+// (GET /skins/MinecraftSkins/{username}.png) which is enabled via the
+// feature.legacy_skin_api flag.
+func (ts *TextureService) GetSkinTexturePathByProfileName(name string) (string, error) {
+	var profile models.Profile
+	if err := database.DB.Where("name = ?", name).First(&profile).Error; err != nil {
+		return "", fmt.Errorf("profile not found")
+	}
+
+	var prop models.ProfileProperty
+	if err := database.DB.
+		Where("profile_id = ? AND name = ?", profile.ID, "textures").
+		First(&prop).Error; err != nil {
+		return "", fmt.Errorf("texture not found")
+	}
+
+	decoded, err := base64.StdEncoding.DecodeString(prop.Value)
+	if err != nil {
+		return "", fmt.Errorf("failed to decode texture property: %v", err)
+	}
+
+	var payload TexturesPayload
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return "", fmt.Errorf("failed to unmarshal texture payload: %v", err)
+	}
+
+	info, ok := payload.Textures["SKIN"]
+	if !ok {
+		return "", fmt.Errorf("skin not found")
+	}
+
+	parts := strings.Split(info.URL, "/textures/")
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid texture url")
+	}
+	hash := parts[len(parts)-1]
+	if hash == "" {
+		return "", fmt.Errorf("invalid texture hash")
+	}
+
+	storageDir := config.AppConfig.Yggdrasil.Server.TexturesStorage
+	if storageDir == "" {
+		storageDir = "./"
+	}
+	filePath := filepath.Join(storageDir, "textures", hash)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		return "", fmt.Errorf("texture file missing")
+	}
+	return filePath, nil
+}
+
 func (ts *TextureService) CheckDownloadPermission(accessToken, profileID string) bool {
 	if accessToken == "" {
 		return false

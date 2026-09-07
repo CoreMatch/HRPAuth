@@ -139,6 +139,7 @@ type YggdrasilSecurityConfig struct {
 	SessionExpirySeconds int
 	MaxTextureWidth      int
 	MaxTextureHeight     int
+	MaxTokensPerUser     int
 }
 
 type FeatureFlagsConfig struct {
@@ -434,11 +435,16 @@ func parseYggdrasilSecurityConfig(yggdrasilConfig map[string]interface{}) Yggdra
 	if sessionExpirySeconds == 0 {
 		sessionExpirySeconds = 28800
 	}
+	maxTokensPerUser := getInt(security, "max_tokens_per_user")
+	if maxTokensPerUser == 0 {
+		maxTokensPerUser = 10
+	}
 	return YggdrasilSecurityConfig{
 		TokenExpiryDays:      getInt(security, "token_expiry_days"),
 		SessionExpirySeconds: sessionExpirySeconds,
 		MaxTextureWidth:      maxTextureWidth,
 		MaxTextureHeight:     maxTextureHeight,
+		MaxTokensPerUser:     maxTokensPerUser,
 	}
 }
 

@@ -157,3 +157,23 @@ type Session struct {
 func (Session) TableName() string {
 	return "sessions"
 }
+
+// ProfileKey represents the chat-signing key pair issued to a user for the
+// Minecraft Profile Key feature (POST /minecraftservices/player/certificates).
+// Persisted per user so that the same key pair is reused across sessions, in
+// line with the authlib-injector recommendation to avoid frequent key rotation.
+type ProfileKey struct {
+	ID                 int       `gorm:"primaryKey;autoIncrement;column:id"`
+	UserID             string    `gorm:"type:varchar(32);column:user_id;uniqueIndex:uk_profile_keys_user_id"`
+	PublicKey          string    `gorm:"type:text;column:public_key"`
+	PrivateKey         string    `gorm:"type:text;column:private_key"`
+	PublicKeySignature string    `gorm:"type:text;column:public_key_signature"`
+	ExpiresAt          time.Time `gorm:"column:expires_at;index:idx_profile_keys_expires_at"`
+	RefreshedAfter     time.Time `gorm:"column:refreshed_after"`
+	CreatedAt          time.Time `gorm:"column:created_at"`
+	UpdatedAt          time.Time `gorm:"column:updated_at"`
+}
+
+func (ProfileKey) TableName() string {
+	return "profile_keys"
+}

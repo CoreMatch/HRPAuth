@@ -281,6 +281,11 @@ func (as *AuthService) SyncUserAndProfileName(userUUID, profileID, newName strin
 }
 
 func (as *AuthService) CreateToken(accessToken, clientToken, userID, profileID string, expiresInDays int) bool {
+	// Per authlib-injector §令牌: cap concurrent valid tokens per user. When
+	// the limit is reached, revoke the oldest still-valid token first so we
+	// stay under the cap before inserting the new one.
+	as.EnforceTokenLimit(userID)
+
 	token := models.Token{
 		AccessToken:       accessToken,
 		ClientToken:       clientToken,
@@ -292,6 +297,59 @@ func (as *AuthService) CreateToken(accessToken, clientToken, userID, profileID s
 	}
 	result := database.DB.Create(&token)
 	return result.Error == nil
+}
+
+// EnforceTokenLimit revokes the user's oldest valid tokens until the user
+// holds at most (limit - 1) valid tokens. Called immediately before
+// CreateToken so the new row brings the count up to the limit exactly.
+func (as *AuthService) EnforceTokenLimit(userID string) int64 {
+	limit := config.AppConfig.Yggdrasil.Security.MaxTokensPerUser
+	if limit <= 0 {
+		limit = 10
+	}
+
+	var count int64
+	if err := database.DB.Model(&models.Token{}).
+		Where("user_id = ? AND state = ?", userID, "valid").
+		Count(&count).Error; err != nil {
+		log.Printf("[token-limit] count failed for user=%s: %v", userID, err)
+		return 0
+	}
+	if count < int64(limit) {
+		return 0
+	}
+
+	// We have `count` valid tokens and will add one more, so we must drop
+	// at least (count - limit + 1). Revoke the oldest ones by issued_at
+	// (nulls last so a fresh INSERT without an explicit issued_at stays).
+	toRevoke := count - int64(limit) + 1
+	var oldest []models.Token
+	if err := database.DB.
+		Where("user_id = ? AND state = ?", userID, "valid").
+		Order("issued_at ASC").
+		Limit(int(toRevoke)).
+		Find(&oldest).Error; err != nil {
+		log.Printf("[token-limit] select oldest failed: %v", err)
+		return 0
+	}
+
+	if len(oldest) == 0 {
+		return 0
+	}
+
+	ids := make([]int, 0, len(oldest))
+	for _, t := range oldest {
+		ids = append(ids, t.ID)
+	}
+
+	res := database.DB.Model(&models.Token{}).
+		Where("id IN ? AND state = ?", ids, "valid").
+		Update("state", "invalid")
+	if res.Error != nil {
+		log.Printf("[token-limit] revoke failed: %v", res.Error)
+		return 0
+	}
+	return res.RowsAffected
 }
 
 func (as *AuthService) InvalidateToken(accessToken string) bool {

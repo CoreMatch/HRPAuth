@@ -187,6 +187,11 @@ func main() {
 		yggdrasil.DELETE("/api/user/profile/:uuid/:textureType", yggdrasilCtrl.DeleteTexture)
 
 		yggdrasil.GET("/textures/:hash", yggdrasilCtrl.DownloadTexture)
+
+		yggdrasil.GET("/skins/MinecraftSkins/:username", yggdrasilCtrl.LegacySkin)
+
+		yggdrasil.POST("/minecraftservices/player/certificates", yggdrasilCtrl.PlayerCertificates)
+		yggdrasil.GET("/minecraftservices/publickeys", yggdrasilCtrl.PublicKeys)
 	}
 
 	r.NoRoute(func(c *gin.Context) {

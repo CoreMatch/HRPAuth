@@ -269,10 +269,9 @@ func (yc *YggdrasilController) Refresh(c *gin.Context) {
 	yc.authService.CreateToken(newAccessToken, req.ClientToken, token.UserID, selectedProfile.ID, expiresInDays)
 
 	response := gin.H{
-		"accessToken":       newAccessToken,
-		"clientToken":       req.ClientToken,
-		"availableProfiles": profiles,
-		"selectedProfile":   selectedProfile,
+		"accessToken":     newAccessToken,
+		"clientToken":     req.ClientToken,
+		"selectedProfile": selectedProfile,
 	}
 
 	if req.RequestUser {
@@ -325,12 +324,22 @@ func (yc *YggdrasilController) Signout(c *gin.Context) {
 		return
 	}
 
+	// Signout accepts a username + password, which means a misconfigured or
+	// malicious client could otherwise use it as a password oracle. Apply
+	// the same rate limit as the authenticate endpoint.
+	if yc.authService.IsLoginRateLimited(req.Username) {
+		sendYggdrasilError(c, "ForbiddenOperationException", "Too many signout attempts. Please try again later.", http.StatusForbidden)
+		return
+	}
+
 	user := yc.authService.VerifyCredentials(req.Username, req.Password, false)
 	if user == nil {
+		yc.authService.RecordLoginAttempt(req.Username, false)
 		sendYggdrasilError(c, "ForbiddenOperationException", "Invalid credentials.", http.StatusForbidden)
 		return
 	}
 
+	yc.authService.RecordLoginAttempt(req.Username, true)
 	yc.authService.InvalidateAllUserTokens(user.UUID)
 
 	c.Status(http.StatusNoContent)
@@ -605,6 +614,96 @@ func (yc *YggdrasilController) DownloadTexture(c *gin.Context) {
 	filePath, err := textureService.GetTexturePath(hash)
 	if err != nil {
 		sendYggdrasilError(c, "NotFoundException", "Texture not found.", http.StatusNotFound)
+		return
+	}
+
+	c.Header("Content-Type", "image/png")
+	c.File(filePath)
+}
+
+// PlayerCertificates implements POST /minecraftservices/player/certificates.
+// Requires the Yggdrasil feature.enable_profile_key flag to be enabled. The
+// caller authenticates with a Yggdrasil access token via the Authorization
+// header. Returns the issued/reused chat-signing key pair plus the server
+// signature over the public key.
+func (yc *YggdrasilController) PlayerCertificates(c *gin.Context) {
+	if !config.AppConfig.Yggdrasil.FeatureFlags.EnableProfileKey {
+		sendYggdrasilError(c, "ForbiddenOperationException", "Profile key feature is disabled.", http.StatusForbidden)
+		return
+	}
+
+	accessToken := parseYggdrasilBearerToken(c.GetHeader("Authorization"))
+	if accessToken == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"path":         "/minecraftservices/player/certificates",
+			"errorType":    "Unauthorized",
+			"error":        "Unauthorized",
+			"errorMessage": "The request requires user authentication",
+		})
+		return
+	}
+
+	token := yc.authService.ValidateToken(accessToken, "")
+	if token == nil {
+		c.JSON(http.StatusUnauthorized, gin.H{
+			"path":         "/minecraftservices/player/certificates",
+			"errorType":    "Unauthorized",
+			"error":        "Unauthorized",
+			"errorMessage": "The request requires user authentication",
+		})
+		return
+	}
+
+	pkService := services.NewProfileKeyService()
+	issued, err := pkService.IssueOrRotate(token.UserID, false)
+	if err != nil {
+		log.Printf("[player/certificates] error issuing profile key for user=%s: %v", token.UserID, err)
+		sendYggdrasilError(c, "InternalException", "Failed to issue profile key.", http.StatusInternalServerError)
+		return
+	}
+
+	c.JSON(http.StatusOK, pkService.BuildResponse(issued))
+}
+
+// PublicKeys implements GET /minecraftservices/publickeys. Returns the
+// server's signing public key in the same envelope Mojang publishes so
+// clients can verify Mojang-style signatures locally.
+func (yc *YggdrasilController) PublicKeys(c *gin.Context) {
+	pkService := services.NewProfileKeyService()
+	c.JSON(http.StatusOK, pkService.BuildPublicKeysResponse())
+}
+
+func parseYggdrasilBearerToken(authHeader string) string {
+	if authHeader == "" {
+		return ""
+	}
+	if strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		return strings.TrimPrefix(authHeader, "Bearer ")
+	}
+	return ""
+}
+
+// LegacySkin serves GET /skins/MinecraftSkins/{username}.png when the
+// Yggdrasil feature.legacy_skin_api flag is enabled. Resolves the username
+// to the stored SKIN texture and streams it back as image/png. Old clients
+// and tools without Yggdrasil support (e.g. pre-1.7.6 legacy skins) hit
+// this endpoint directly.
+func (yc *YggdrasilController) LegacySkin(c *gin.Context) {
+	if !config.AppConfig.Yggdrasil.FeatureFlags.LegacySkinAPI {
+		sendYggdrasilError(c, "NotFoundException", "Legacy skin API is disabled.", http.StatusNotFound)
+		return
+	}
+
+	username := strings.TrimSuffix(c.Param("username"), ".png")
+	if username == "" {
+		sendYggdrasilError(c, "BadRequestException", "Bad request.", http.StatusBadRequest)
+		return
+	}
+
+	textureService := services.NewTextureService()
+	filePath, err := textureService.GetSkinTexturePathByProfileName(username)
+	if err != nil {
+		c.Status(http.StatusNoContent)
 		return
 	}
 
