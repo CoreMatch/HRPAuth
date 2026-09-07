@@ -561,11 +561,15 @@ func (yc *YggdrasilController) UploadTexture(c *gin.Context) {
 	model := c.PostForm("model")
 
 	textureService := services.NewTextureService()
-	if err := textureService.UploadTexture(accessToken, uuid, textureType, model, data); err != nil {
+	warnings, err := textureService.UploadTexture(accessToken, uuid, textureType, model, data)
+	if err != nil {
 		sendYggdrasilError(c, "ForbiddenOperationException", err.Error(), http.StatusForbidden)
 		return
 	}
 
+	if len(warnings) > 0 {
+		c.Header("X-Texture-Warnings", strings.Join(warnings, "; "))
+	}
 	c.Status(http.StatusNoContent)
 }
 

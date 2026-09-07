@@ -130,7 +130,8 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 		return
 	}
 
-	if err := tc.textureService.UploadTextureByUser(user.UUID, profileID, textureType, model, data); err != nil {
+	warnings, err := tc.textureService.UploadTextureByUser(user.UUID, profileID, textureType, model, data)
+	if err != nil {
 		status := http.StatusInternalServerError
 		code := CodeTextureUploadFailed
 		switch err.Error() {
@@ -150,10 +151,14 @@ func (tc *TextureController) UploadTexture(c *gin.Context) {
 		return
 	}
 
-	respondOK(c, "材质上传成功", gin.H{
+	respData := gin.H{
 		"profile_id":   profileID,
 		"texture_type": textureType,
-	})
+	}
+	if len(warnings) > 0 {
+		respData["warnings"] = warnings
+	}
+	respondOK(c, "材质上传成功", respData)
 }
 
 type DeleteTextureRequest struct {

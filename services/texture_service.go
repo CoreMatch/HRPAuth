@@ -50,7 +50,24 @@ type TexturesPayload struct {
 	Textures    map[string]TextureInfo `json:"textures"`
 }
 
-func (ts *TextureService) ValidateTexture(file io.Reader, textureType string, model string) ([]byte, error) {
+// TextureValidationResult contains the validated texture data together with
+// any notices (informational) or warnings (potential issues) generated during
+// validation. Callers should still upload the texture even when notices or
+// warnings are present.
+type TextureValidationResult struct {
+	Data     []byte
+	Notices  []string // informational: resolution exceeds limit but ratio is valid
+	Warnings []string // potential issue: aspect ratio does not match any standard size
+}
+
+func gcd(a, b int) int {
+	for b != 0 {
+		a, b = b, a%b
+	}
+	return a
+}
+
+func (ts *TextureService) ValidateTexture(file io.Reader, textureType string, model string) (*TextureValidationResult, error) {
 	cfg := config.AppConfig.Yggdrasil.Security
 	maxWidth := cfg.MaxTextureWidth
 	maxHeight := cfg.MaxTextureHeight
@@ -78,10 +95,6 @@ func (ts *TextureService) ValidateTexture(file io.Reader, textureType string, mo
 	width := config.Width
 	height := config.Height
 
-	if width > maxWidth || height > maxHeight {
-		return nil, fmt.Errorf("texture size %dx%d exceeds maximum allowed size %dx%d", width, height, maxWidth, maxHeight)
-	}
-
 	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode texture: %v", err)
@@ -91,14 +104,28 @@ func (ts *TextureService) ValidateTexture(file io.Reader, textureType string, mo
 	actualWidth := bounds.Dx()
 	actualHeight := bounds.Dy()
 
+	result := &TextureValidationResult{}
+
 	switch textureType {
 	case "skin":
 		if !isValidSkinSize(actualWidth, actualHeight) {
-			return nil, fmt.Errorf("invalid skin size: %dx%d, must be 64x32 or 64x64", actualWidth, actualHeight)
+			if isProportional(actualWidth, actualHeight) {
+				result.Notices = append(result.Notices,
+					fmt.Sprintf("skin size %dx%d exceeds standard size, but has a valid aspect ratio", actualWidth, actualHeight))
+			} else {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("skin size %dx%d does not match standard proportions", actualWidth, actualHeight))
+			}
 		}
 	case "cape":
 		if !isValidCapeSize(actualWidth, actualHeight) {
-			return nil, fmt.Errorf("invalid cape size: %dx%d, must be 64x32 or 22x17", actualWidth, actualHeight)
+			if isProportional(actualWidth, actualHeight) {
+				result.Notices = append(result.Notices,
+					fmt.Sprintf("cape size %dx%d exceeds standard size, but has a valid aspect ratio", actualWidth, actualHeight))
+			} else {
+				result.Warnings = append(result.Warnings,
+					fmt.Sprintf("cape size %dx%d does not match standard proportions", actualWidth, actualHeight))
+			}
 		}
 		if actualWidth == 22 && actualHeight == 17 {
 			img = resizeCapeToStandard(img)
@@ -107,12 +134,23 @@ func (ts *TextureService) ValidateTexture(file io.Reader, textureType string, mo
 		return nil, fmt.Errorf("invalid texture type: %s", textureType)
 	}
 
+	if width > maxWidth || height > maxHeight {
+		if isProportional(width, height) {
+			result.Notices = append(result.Notices,
+				fmt.Sprintf("texture resolution %dx%d exceeds limit %dx%d, but has a valid aspect ratio", width, height, maxWidth, maxHeight))
+		} else {
+			result.Warnings = append(result.Warnings,
+				fmt.Sprintf("texture resolution %dx%d exceeds limit %dx%d and has non-standard proportions", width, height, maxWidth, maxHeight))
+		}
+	}
+
 	resultBuf := new(bytes.Buffer)
 	if err := png.Encode(resultBuf, img); err != nil {
 		return nil, fmt.Errorf("failed to re-encode texture: %v", err)
 	}
 
-	return resultBuf.Bytes(), nil
+	result.Data = resultBuf.Bytes()
+	return result, nil
 }
 
 func isValidSkinSize(width, height int) bool {
@@ -121,6 +159,11 @@ func isValidSkinSize(width, height int) bool {
 
 func isValidCapeSize(width, height int) bool {
 	return (width == 64 && height == 32) || (width == 22 && height == 17)
+}
+
+func isProportional(width, height int) bool {
+	g := gcd(width, height)
+	return (width/g == 2 && height/g == 1) || (width/g == 1 && height/g == 1)
 }
 
 func resizeCapeToStandard(img image.Image) image.Image {
@@ -177,35 +220,36 @@ func (ts *TextureService) GetTexturePath(hash string) (string, error) {
 	return filePath, nil
 }
 
-func (ts *TextureService) UploadTexture(accessToken, profileID, textureType, model string, fileData []byte) error {
+func (ts *TextureService) UploadTexture(accessToken, profileID, textureType, model string, fileData []byte) ([]string, error) {
 	token := NewAuthService().ValidateToken(accessToken, "")
 	if token == nil {
-		return fmt.Errorf("invalid access token")
+		return nil, fmt.Errorf("invalid access token")
 	}
 
 	if !NewAuthService().IsProfileOwnedByUser(profileID, token.UserID) {
-		return fmt.Errorf("profile not owned by user")
+		return nil, fmt.Errorf("profile not owned by user")
 	}
 
-	validatedData, err := ts.ValidateTexture(strings.NewReader(string(fileData)), textureType, model)
+	validated, err := ts.ValidateTexture(strings.NewReader(string(fileData)), textureType, model)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	hash := ts.CalculateHash(validatedData)
+	hash := ts.CalculateHash(validated.Data)
 
-	if err := ts.SaveTexture(validatedData, hash); err != nil {
-		return err
+	if err := ts.SaveTexture(validated.Data, hash); err != nil {
+		return nil, err
 	}
 
 	callbackURL := config.AppConfig.Callback.URL
 	textureURL := strings.TrimRight(callbackURL, "/") + "/textures/" + hash
 
 	if err := ts.UpdateProfileTexture(profileID, textureType, textureURL, model); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	warnings := append(validated.Notices, validated.Warnings...)
+	return warnings, nil
 }
 
 func (ts *TextureService) UpdateProfileTexture(profileID, textureType, textureURL, model string) error {
@@ -315,30 +359,31 @@ func (ts *TextureService) SignTextureValue(value string) (string, error) {
 	return base64.StdEncoding.EncodeToString(signature), nil
 }
 
-func (ts *TextureService) UploadTextureByUser(userID, profileID, textureType, model string, fileData []byte) error {
+func (ts *TextureService) UploadTextureByUser(userID, profileID, textureType, model string, fileData []byte) ([]string, error) {
 	if !NewAuthService().IsProfileOwnedByUser(profileID, userID) {
-		return fmt.Errorf("profile not owned by user")
+		return nil, fmt.Errorf("profile not owned by user")
 	}
 
-	validatedData, err := ts.ValidateTexture(strings.NewReader(string(fileData)), textureType, model)
+	validated, err := ts.ValidateTexture(strings.NewReader(string(fileData)), textureType, model)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	hash := ts.CalculateHash(validatedData)
+	hash := ts.CalculateHash(validated.Data)
 
-	if err := ts.SaveTexture(validatedData, hash); err != nil {
-		return err
+	if err := ts.SaveTexture(validated.Data, hash); err != nil {
+		return nil, err
 	}
 
 	callbackURL := config.AppConfig.Callback.URL
 	textureURL := strings.TrimRight(callbackURL, "/") + "/textures/" + hash
 
 	if err := ts.UpdateProfileTexture(profileID, textureType, textureURL, model); err != nil {
-		return err
+		return nil, err
 	}
 
-	return nil
+	warnings := append(validated.Notices, validated.Warnings...)
+	return warnings, nil
 }
 
 func (ts *TextureService) RemoveTextureByUser(userID, profileID, textureType string) error {
