@@ -55,10 +55,18 @@ func (ts *TextureService) ValidateTexture(file io.Reader, textureType string, mo
 	maxWidth := cfg.MaxTextureWidth
 	maxHeight := cfg.MaxTextureHeight
 
-	buf := new(bytes.Buffer)
-	teeReader := io.TeeReader(file, buf)
+	data, err := io.ReadAll(file)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read texture data: %v", err)
+	}
 
-	config, format, err := image.DecodeConfig(teeReader)
+	if cfg.MaxTextureFileSize > 0 && int64(len(data)) > cfg.MaxTextureFileSize {
+		return nil, fmt.Errorf("texture file size %d bytes exceeds maximum allowed size %d bytes", len(data), cfg.MaxTextureFileSize)
+	}
+
+	reader := bytes.NewReader(data)
+
+	config, format, err := image.DecodeConfig(reader)
 	if err != nil {
 		return nil, fmt.Errorf("invalid image format: %v", err)
 	}
@@ -74,7 +82,7 @@ func (ts *TextureService) ValidateTexture(file io.Reader, textureType string, mo
 		return nil, fmt.Errorf("texture size %dx%d exceeds maximum allowed size %dx%d", width, height, maxWidth, maxHeight)
 	}
 
-	img, _, err := image.Decode(io.MultiReader(buf, teeReader))
+	img, _, err := image.Decode(bytes.NewReader(data))
 	if err != nil {
 		return nil, fmt.Errorf("failed to decode texture: %v", err)
 	}
