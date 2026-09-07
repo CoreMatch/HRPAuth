@@ -1,12 +1,25 @@
 package controllers
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/config"
+	redisClient "github.com/lnb/HRPAuth-Backend-Go/redis"
 )
+
+// relayTTL 是 relay 规则的 Redis 存活时间。
+// 每次 Register/Delete 都会刷新 TTL；服务下线后超时自动回收。
+const relayTTL = 30 * 24 * time.Hour
+
+func relayKey(prefix, service string) string {
+	return prefix + "relay:" + service
+}
 
 // RelayRule 是微服务声明的转发规则：
 // Dest 为主服务对外路径（前缀匹配），Source 为微服务地址。
@@ -29,6 +42,7 @@ func NewRelayRegistry() *RelayRegistry {
 }
 
 // Upsert 以 service 为单位整体替换该服务的 relay 规则。
+// 同步持久化到 Redis，使主服务重启后能恢复转发规则。
 func (r *RelayRegistry) Upsert(service string, rules []RelayRule) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -46,9 +60,75 @@ func (r *RelayRegistry) Upsert(service string, rules []RelayRule) {
 		rule.Service = service
 		r.rules[rule.Dest] = rule
 	}
+
+	r.persist(service, rules)
+}
+
+// persist 将指定 service 的 relay 规则列表写入 Redis。
+// 调用方需持有 r.mu 写锁。
+func (r *RelayRegistry) persist(service string, rules []RelayRule) {
+	if redisClient.Client == nil {
+		return
+	}
+	prefix := config.AppConfig.Redis.Prefix
+	ctx := context.Background()
+
+	// 收集实际写入内存的规则（去掉 Dest/Source 为空的）。
+	stored := make([]RelayRule, 0, len(rules))
+	for dest, rule := range r.rules {
+		if rule.Service == service {
+			stored = append(stored, RelayRule{Dest: dest, Source: rule.Source, Service: service})
+		}
+	}
+
+	payload, err := json.Marshal(stored)
+	if err != nil {
+		return
+	}
+	_ = redisClient.Client.Set(ctx, relayKey(prefix, service), payload, relayTTL).Err()
+}
+
+// Load 从 Redis 恢复所有 relay 规则到内存。
+func (r *RelayRegistry) Load(ctx context.Context) error {
+	if redisClient.Client == nil {
+		return nil
+	}
+	prefix := config.AppConfig.Redis.Prefix
+
+	pattern := prefix + "relay:*"
+	iter := redisClient.Client.Scan(ctx, 0, pattern, 0).Iterator()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for iter.Next(ctx) {
+		key := iter.Val()
+		// 从 "prefix:relay:service" 中提取 service 名。
+		service := strings.TrimPrefix(key, prefix+"relay:")
+		if service == "" || strings.Contains(service, ":") {
+			continue
+		}
+		raw, err := redisClient.Client.Get(ctx, key).Result()
+		if err != nil {
+			continue
+		}
+		var rules []RelayRule
+		if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+			continue
+		}
+		for _, rule := range rules {
+			if rule.Dest == "" || rule.Source == "" {
+				continue
+			}
+			rule.Service = service
+			r.rules[rule.Dest] = rule
+		}
+	}
+	return iter.Err()
 }
 
 // Delete 删除指定服务下的指定 dest 规则，返回是否命中。
+// 删除后会重新持久化该服务的剩余规则到 Redis。
 func (r *RelayRegistry) Delete(service, dest string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -58,6 +138,15 @@ func (r *RelayRegistry) Delete(service, dest string) bool {
 		return false
 	}
 	delete(r.rules, dest)
+
+	// 收集该服务剩余规则并写回 Redis。
+	remaining := make([]RelayRule, 0)
+	for d, rl := range r.rules {
+		if rl.Service == service {
+			remaining = append(remaining, RelayRule{Dest: d, Source: rl.Source, Service: service})
+		}
+	}
+	r.persist(service, remaining)
 	return true
 }
 

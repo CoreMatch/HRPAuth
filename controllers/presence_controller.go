@@ -1,6 +1,8 @@
 package controllers
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"sync"
@@ -8,7 +10,26 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
+	redisClient "github.com/lnb/HRPAuth-Backend-Go/redis"
+	"github.com/redis/go-redis/v9"
 )
+
+// presenceBaseTTL 是 Redis 中 presence 记录的基础存活时间。
+// 每次心跳注册都会刷新 TTL；超过该时间未心跳的服务视为已下线，
+// 由惰性清理机制 + Redis TTL 兜底共同保证僵尸数据被回收。
+const presenceBaseTTL = 24 * time.Hour
+
+// presencePersistentTTL 是声明"永不过期"服务的兜底 TTL，
+// 防止其注册数据在 Redis 中永久驻留成为僵尸。
+const presencePersistentTTL = 7 * 24 * time.Hour
+
+func presenceKey(prefix, name string) string {
+	return prefix + "presence:" + name
+}
+
+func presenceIndexKey(prefix string) string {
+	return prefix + "presence:_index"
+}
 
 // PresenceScope 是微服务声明的作用区域。
 // Name 为作用区域名；FrontendAreas 列出该区域覆盖的前端区域/页面，
@@ -57,6 +78,7 @@ func NewPresenceRegistry() *PresenceRegistry {
 // ttlSeconds <= 0 表示永不过期（未指定或显式指定为不过期）。
 // scope 可选；传入 nil 表示该服务不声明作用区域。sdkURL 可选。
 // securityLevel 钳制在 0~2。interactsWith 声明与其他服务的交互关系，可空。
+// 同步将记录持久化到 Redis，使主服务重启后能恢复注册状态。
 func (r *PresenceRegistry) Register(name string, ttlSeconds int, scope *PresenceScope, sdkURL string, securityLevel int, interactsWith []string) PresenceRecord {
 	now := time.Now()
 
@@ -89,11 +111,86 @@ func (r *PresenceRegistry) Register(name string, ttlSeconds int, scope *Presence
 		record.ExpiresAt = time.Time{}
 	}
 	r.records[name] = record
+
+	r.persist(name, record)
 	return record
 }
 
+// persist 将单条 presence 记录写入 Redis。
+// 永不过期的记录使用较长的兜底 TTL，防止成为永久僵尸数据。
+// 调用方需持有 r.mu 写锁。
+func (r *PresenceRegistry) persist(name string, record PresenceRecord) {
+	if redisClient.Client == nil {
+		return
+	}
+	prefix := config.AppConfig.Redis.Prefix
+	ctx := context.Background()
+
+	payload, err := json.Marshal(record)
+	if err != nil {
+		return
+	}
+
+	ttl := presenceBaseTTL
+	if record.ExpiresAt.IsZero() {
+		ttl = presencePersistentTTL
+	} else if d := time.Until(record.ExpiresAt); d > 0 && d < ttl {
+		ttl = d
+	}
+
+	key := presenceKey(prefix, name)
+	pipe := redisClient.Client.TxPipeline()
+	pipe.Set(ctx, key, payload, ttl)
+	pipe.SAdd(ctx, presenceIndexKey(prefix), name)
+	// 索引本身也设置 TTL，每次心跳刷新。
+	pipe.Expire(ctx, presenceIndexKey(prefix), 30*24*time.Hour)
+	_, _ = pipe.Exec(ctx)
+}
+
+// Load 从 Redis 恢复所有 presence 注册到内存。
+// 由主服务启动时调用，确保重启后微服务状态延续。
+// 加载过程中跳过已过期的记录，避免恢复僵尸数据。
+func (r *PresenceRegistry) Load(ctx context.Context) error {
+	if redisClient.Client == nil {
+		return nil
+	}
+	prefix := config.AppConfig.Redis.Prefix
+
+	names, err := redisClient.Client.SMembers(ctx, presenceIndexKey(prefix)).Result()
+	if err != nil {
+		return err
+	}
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for _, name := range names {
+		raw, err := redisClient.Client.Get(ctx, presenceKey(prefix, name)).Result()
+		if err == redis.Nil {
+			// 主键已过期：从索引中清理。
+			_ = redisClient.Client.SRem(ctx, presenceIndexKey(prefix), name).Err()
+			continue
+		}
+		if err != nil {
+			continue
+		}
+		var record PresenceRecord
+		if err := json.Unmarshal([]byte(raw), &record); err != nil {
+			continue
+		}
+		// 跳过已过期记录（按业务 TTL）。
+		if !record.ExpiresAt.IsZero() && time.Now().After(record.ExpiresAt) {
+			_ = redisClient.Client.Del(ctx, presenceKey(prefix, name)).Err()
+			_ = redisClient.Client.SRem(ctx, presenceIndexKey(prefix), name).Err()
+			continue
+		}
+		r.records[name] = record
+	}
+	return nil
+}
+
 // Get 返回指定服务的存在记录。服务不存在或已过期时返回 false，
-// 已过期的记录会被惰性清除。
+// 已过期的记录会被惰性清除（同时清理 Redis 持久化数据）。
 func (r *PresenceRegistry) Get(name string) (PresenceRecord, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -104,9 +201,22 @@ func (r *PresenceRegistry) Get(name string) (PresenceRecord, bool) {
 	}
 	if !record.ExpiresAt.IsZero() && time.Now().After(record.ExpiresAt) {
 		delete(r.records, name)
+		r.evict(name)
 		return PresenceRecord{}, false
 	}
 	return record, true
+}
+
+// evict 从 Redis 移除某条 presence 持久化数据。
+// 调用方需持有 r.mu 写锁。
+func (r *PresenceRegistry) evict(name string) {
+	if redisClient.Client == nil {
+		return
+	}
+	prefix := config.AppConfig.Redis.Prefix
+	ctx := context.Background()
+	_ = redisClient.Client.Del(ctx, presenceKey(prefix, name)).Err()
+	_ = redisClient.Client.SRem(ctx, presenceIndexKey(prefix), name).Err()
 }
 
 // FrontendServices 返回与指定前端相关的微服务概要列表。
@@ -118,10 +228,15 @@ func (r *PresenceRegistry) FrontendServices(frontendName string) ([]ServiceSumma
 	defer r.mu.Unlock()
 
 	// 已过期记录惰性清除。
+	expired := make([]string, 0)
 	for name, record := range r.records {
 		if !record.ExpiresAt.IsZero() && time.Now().After(record.ExpiresAt) {
-			delete(r.records, name)
+			expired = append(expired, name)
 		}
+	}
+	for _, name := range expired {
+		delete(r.records, name)
+		r.evict(name)
 	}
 
 	frontend, exists := r.records[frontendName]

@@ -1,12 +1,24 @@
 package controllers
 
 import (
+	"context"
+	"encoding/json"
 	"net/http"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/config"
+	redisClient "github.com/lnb/HRPAuth-Backend-Go/redis"
 )
+
+// routeTTL 是 route 规则的 Redis 存活时间。
+const routeTTL = 30 * 24 * time.Hour
+
+func routeKey(prefix, service string) string {
+	return prefix + "route:" + service
+}
 
 // RouteRule 是微服务针对某个作用区域声明的路由规则。
 // Service 由后端在注册时填充；Scope 为作用区域名；
@@ -32,10 +44,61 @@ func NewRouteRegistry() *RouteRegistry {
 }
 
 // Upsert 以 service 为单位整体替换其路由规则。
+// 同步持久化到 Redis，使主服务重启后能恢复编排规则。
 func (r *RouteRegistry) Upsert(service string, rules []RouteRule) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.rules[service] = rules
+
+	r.persist(service, rules)
+}
+
+// persist 将指定 service 的路由规则写入 Redis。
+// 调用方需持有 r.mu 写锁。
+func (r *RouteRegistry) persist(service string, rules []RouteRule) {
+	if redisClient.Client == nil {
+		return
+	}
+	prefix := config.AppConfig.Redis.Prefix
+	ctx := context.Background()
+
+	payload, err := json.Marshal(rules)
+	if err != nil {
+		return
+	}
+	_ = redisClient.Client.Set(ctx, routeKey(prefix, service), payload, routeTTL).Err()
+}
+
+// Load 从 Redis 恢复所有路由规则到内存。
+func (r *RouteRegistry) Load(ctx context.Context) error {
+	if redisClient.Client == nil {
+		return nil
+	}
+	prefix := config.AppConfig.Redis.Prefix
+
+	pattern := prefix + "route:*"
+	iter := redisClient.Client.Scan(ctx, 0, pattern, 0).Iterator()
+
+	r.mu.Lock()
+	defer r.mu.Unlock()
+
+	for iter.Next(ctx) {
+		key := iter.Val()
+		service := strings.TrimPrefix(key, prefix+"route:")
+		if service == "" || strings.Contains(service, ":") {
+			continue
+		}
+		raw, err := redisClient.Client.Get(ctx, key).Result()
+		if err != nil {
+			continue
+		}
+		var rules []RouteRule
+		if err := json.Unmarshal([]byte(raw), &rules); err != nil {
+			continue
+		}
+		r.rules[service] = rules
+	}
+	return iter.Err()
 }
 
 // MatchPre 返回命中 path 且声明了前置转发（PreURL 非空）的路由规则。

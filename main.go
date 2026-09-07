@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"strings"
@@ -73,6 +74,20 @@ func main() {
 	presenceRegistry := controllers.NewPresenceRegistry()
 	routeRegistry := controllers.NewRouteRegistry()
 	relayRegistry := controllers.NewRelayRegistry()
+
+	// 从 Redis 恢复已持久化的微服务注册数据。
+	// 加载失败仅记录日志，不阻塞启动；运行时注册数据会在微服务下次心跳时自然补齐。
+	loadCtx, cancelLoad := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := presenceRegistry.Load(loadCtx); err != nil {
+		log.Printf("warning: failed to load presence registry from redis: %v", err)
+	}
+	if err := relayRegistry.Load(loadCtx); err != nil {
+		log.Printf("warning: failed to load relay registry from redis: %v", err)
+	}
+	if err := routeRegistry.Load(loadCtx); err != nil {
+		log.Printf("warning: failed to load route registry from redis: %v", err)
+	}
+	cancelLoad()
 
 	presenceCtrl := controllers.NewPresenceController(presenceRegistry)
 	routeCtrl := controllers.NewRouteController(routeRegistry, presenceRegistry)
