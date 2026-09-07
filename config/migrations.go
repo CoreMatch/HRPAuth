@@ -25,11 +25,13 @@ type ConfigMigration struct {
 //   - "3":   security fields (incl. captcha) moved from yggdrasil.security to
 //     top-level security, manage.token introduced
 //   - "4":   oauth2 section introduced for site-side OAuth2 authorization
+//   - "5":   yggdrasil.security.max_texture_file_size added (default 512000)
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
 		{FromVersion: "2", ToVersion: "3", Migrate: migrateV2ToV3},
 		{FromVersion: "3", ToVersion: "4", Migrate: migrateV3ToV4},
+		{FromVersion: "4", ToVersion: "5", Migrate: migrateV4ToV5},
 	}
 }
 
@@ -283,5 +285,24 @@ func migrateV3ToV4(cfg map[string]interface{}, tokenGen func() string) error {
 
 	cfg["oauth2"] = oauth2
 	cfg["version"] = "4"
+	return nil
+}
+
+// migrateV4ToV5 adds max_texture_file_size to yggdrasil.security.
+func migrateV4ToV5(cfg map[string]interface{}, tokenGen func() string) error {
+	ygg, _ := cfg["yggdrasil"].(map[string]interface{})
+	if ygg == nil {
+		ygg = map[string]interface{}{}
+		cfg["yggdrasil"] = ygg
+	}
+	sec, _ := ygg["security"].(map[string]interface{})
+	if sec == nil {
+		sec = map[string]interface{}{}
+	}
+	if _, exists := sec["max_texture_file_size"]; !exists {
+		sec["max_texture_file_size"] = 512000
+	}
+	ygg["security"] = sec
+	cfg["version"] = "5"
 	return nil
 }

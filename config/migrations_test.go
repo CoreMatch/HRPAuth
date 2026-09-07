@@ -36,7 +36,7 @@ func TestMigrateConfigUpToDate(t *testing.T) {
 }
 
 func TestMigrateConfigFutureVersion(t *testing.T) {
-	cfg := map[string]interface{}{"version": "5", "site": map[string]interface{}{"name": "future"}}
+	cfg := map[string]interface{}{"version": "6", "site": map[string]interface{}{"name": "future"}}
 	out, changed, err := MigrateConfig(cfg, tokenGen)
 	if err != nil {
 		t.Fatalf("future version must warn and continue, got error: %v", err)
@@ -44,7 +44,7 @@ func TestMigrateConfigFutureVersion(t *testing.T) {
 	if changed {
 		t.Fatal("expected no migration for a newer config")
 	}
-	if out["version"] != "5" {
+	if out["version"] != "6" {
 		t.Fatalf("expected untouched version, got %v", out["version"])
 	}
 }
@@ -133,13 +133,13 @@ func TestMigrateConfigV1Chain(t *testing.T) {
 	if !ok || manage["token"] != "test-manage-token" {
 		t.Fatalf("expected generated manage token, got %v", out["manage"])
 	}
-		oauth2, ok := out["oauth2"].(map[string]interface{})
-		if !ok {
-			t.Fatal("oauth2 section missing after v3->v4")
-		}
-		if oauth2["super_client_id"] != "hrpauth-internal-super" {
-			t.Errorf("expected default super_client_id, got %v", oauth2["super_client_id"])
-		}
+	oauth2, ok := out["oauth2"].(map[string]interface{})
+	if !ok {
+		t.Fatal("oauth2 section missing after v3->v4")
+	}
+	if oauth2["super_client_id"] != "hrpauth-internal-super" {
+		t.Errorf("expected default super_client_id, got %v", oauth2["super_client_id"])
+	}
 
 	// yggdrasil.security keeps only its own fields
 	ygg := out["yggdrasil"].(map[string]interface{})
@@ -157,8 +157,8 @@ func TestMigrateConfigV2ToV3(t *testing.T) {
 		"version": "2",
 		"yggdrasil": map[string]interface{}{
 			"security": map[string]interface{}{
-				"enable_captcha":  true,
-				"captcha_ttl":     60,
+				"enable_captcha":    true,
+				"captcha_ttl":       60,
 				"token_expiry_days": 15,
 			},
 		},
@@ -196,24 +196,24 @@ func TestMigrateConfigV2ToV3(t *testing.T) {
 	if manage["token"] != "test-manage-token" {
 		t.Errorf("expected generated manage token, got %v", manage)
 	}
-		oauth2 := out["oauth2"].(map[string]interface{})
-		if oauth2["public_client_id"] != "hrpauth-webui" {
-			t.Errorf("expected public_client_id default, got %v", oauth2["public_client_id"])
-		}
+	oauth2 := out["oauth2"].(map[string]interface{})
+	if oauth2["public_client_id"] != "hrpauth-webui" {
+		t.Errorf("expected public_client_id default, got %v", oauth2["public_client_id"])
+	}
 }
 
 func TestMigrateV2ToV3PreservesExistingTopLevelSecurity(t *testing.T) {
 	cfg := map[string]interface{}{
 		"version": "2",
 		"security": map[string]interface{}{
-			"password_cost":   14,
-			"enable_captcha":  false,
-			"captcha_ttl":     42,
+			"password_cost":  14,
+			"enable_captcha": false,
+			"captcha_ttl":    42,
 		},
 		"yggdrasil": map[string]interface{}{
 			"security": map[string]interface{}{
-				"password_cost":   8, // must NOT override existing top-level value
-				"enable_captcha":  true,
+				"password_cost":     8, // must NOT override existing top-level value
+				"enable_captcha":    true,
 				"token_expiry_days": 30,
 			},
 		},
@@ -230,5 +230,64 @@ func TestMigrateV2ToV3PreservesExistingTopLevelSecurity(t *testing.T) {
 	}
 	if sec["enable_captcha"] != false {
 		t.Errorf("existing top-level enable_captcha must be preserved, got %v", sec["enable_captcha"])
+	}
+}
+
+func TestMigrateV4ToV5AddsMaxTextureFileSize(t *testing.T) {
+	cfg := map[string]interface{}{
+		"version": "4",
+		"yggdrasil": map[string]interface{}{
+			"security": map[string]interface{}{
+				"token_expiry_days":      15,
+				"session_expiry_seconds": 28800,
+				"max_texture_width":      1024,
+				"max_texture_height":     1024,
+			},
+		},
+	}
+
+	out, changed, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected migration to run")
+	}
+	if out["version"] != ConfigVersion {
+		t.Fatalf("expected version %q, got %v", ConfigVersion, out["version"])
+	}
+
+	ygg := out["yggdrasil"].(map[string]interface{})
+	ySec := ygg["security"].(map[string]interface{})
+	if ySec["max_texture_file_size"] != 512000 {
+		t.Errorf("expected max_texture_file_size 512000, got %v", ySec["max_texture_file_size"])
+	}
+	// existing fields preserved
+	if ySec["max_texture_width"] != 1024 {
+		t.Errorf("expected max_texture_width preserved, got %v", ySec["max_texture_width"])
+	}
+}
+
+func TestMigrateV4ToV5PreservesExistingFileSize(t *testing.T) {
+	cfg := map[string]interface{}{
+		"version": "4",
+		"yggdrasil": map[string]interface{}{
+			"security": map[string]interface{}{
+				"max_texture_file_size": 1048576,
+			},
+		},
+	}
+
+	out, changed, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected migration to run")
+	}
+
+	ySec := out["yggdrasil"].(map[string]interface{})["security"].(map[string]interface{})
+	if ySec["max_texture_file_size"] != 1048576 {
+		t.Errorf("existing max_texture_file_size must be preserved, got %v", ySec["max_texture_file_size"])
 	}
 }
