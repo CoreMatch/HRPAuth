@@ -422,15 +422,30 @@ func (sc *StartupController) ensureSchemaMigrationServiceColumn(db *sql.DB) erro
 		}
 	}
 
-	queries := []string{
-		"ALTER TABLE `schema_migrations` MODIFY COLUMN `service` varchar(16) NOT NULL DEFAULT '" + schemaMigrationService + "' AFTER `dirty`",
-		"UPDATE `schema_migrations` SET `service` = '" + schemaMigrationService + "' WHERE `service` <> '" + schemaMigrationService + "' OR `service` IS NULL",
+	// Backfill any rows that don't have a service value.
+	if _, err := db.Exec("UPDATE `schema_migrations` SET `service` = '" + schemaMigrationService + "' WHERE `service` IS NULL OR `service` = ''"); err != nil {
+		return fmt.Errorf("failed to backfill schema_migrations service: %v", err)
 	}
 
-	for _, query := range queries {
-		if _, err := db.Exec(query); err != nil {
-			return fmt.Errorf("failed to ensure schema_migrations service column: %v", err)
+	// Ensure PRIMARY key only contains `version` — `service` must not be part of the PK.
+	pkQuery := `
+		SELECT COUNT(*)
+		FROM information_schema.TABLE_CONSTRAINTS
+		WHERE TABLE_SCHEMA = DATABASE()
+			AND TABLE_NAME = 'schema_migrations'
+			AND CONSTRAINT_TYPE = 'PRIMARY KEY'
+	`
+	var pkCount int
+	if err := db.QueryRow(pkQuery).Scan(&pkCount); err != nil {
+		return fmt.Errorf("failed to check schema_migrations primary key: %v", err)
+	}
+	if pkCount > 0 {
+		if _, err := db.Exec("ALTER TABLE `schema_migrations` DROP PRIMARY KEY"); err != nil {
+			return fmt.Errorf("failed to drop schema_migrations primary key: %v", err)
 		}
+	}
+	if _, err := db.Exec("ALTER TABLE `schema_migrations` ADD PRIMARY KEY (`version`)"); err != nil {
+		return fmt.Errorf("failed to add schema_migrations primary key: %v", err)
 	}
 
 	return nil
