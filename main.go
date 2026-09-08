@@ -67,6 +67,9 @@ func main() {
 	textureCleanupCtrl := controllers.NewTextureCleanupController()
 	textureCleanupCtrl.Start(1 * time.Hour)
 
+	oauth2CleanupCtrl := controllers.NewOAuth2CleanupController()
+	oauth2CleanupCtrl.Start(24 * time.Hour)
+
 	controllers.StartMBETimeoutLoop(30 * time.Second)
 
 	r := gin.Default()

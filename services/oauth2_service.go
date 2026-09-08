@@ -348,6 +348,30 @@ func (os *OAuth2Service) RevokeAccessToken(accessToken string) error {
 		Update("revoked_at", &now).Error
 }
 
+// CleanupExpiredAccessTokens 删除已过期或已撤销的 OAuth2 access token。
+// 返回被删除的行数。立即删除（无 grace period），符合 OAuth2 安全最佳实践。
+func (os *OAuth2Service) CleanupExpiredAccessTokens() (int64, error) {
+	now := time.Now()
+	result := database.DB.Where("expires_at < ? OR revoked_at IS NOT NULL", now).
+		Delete(&models.OAuth2AccessToken{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
+// CleanupExpiredAuthorizationCodes 删除已过期或已消费的 OAuth2 authorization code。
+// 返回被删除的行数。
+func (os *OAuth2Service) CleanupExpiredAuthorizationCodes() (int64, error) {
+	now := time.Now()
+	result := database.DB.Where("expires_at < ? OR consumed_at IS NOT NULL", now).
+		Delete(&models.OAuth2AuthorizationCode{})
+	if result.Error != nil {
+		return 0, result.Error
+	}
+	return result.RowsAffected, nil
+}
+
 func (os *OAuth2Service) IssueFirstPartyUserTokens(userID string) (*models.OAuth2AccessToken, *models.OAuth2RefreshToken, error) {
 	return os.issueUserTokens(config.AppConfig.OAuth2.PublicClientID, userID, publicSiteScopes())
 }
