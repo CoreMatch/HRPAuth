@@ -360,11 +360,11 @@ func (os *OAuth2Service) CleanupExpiredAccessTokens() (int64, error) {
 	return result.RowsAffected, nil
 }
 
-// CleanupExpiredAuthorizationCodes 删除已过期或已消费的 OAuth2 authorization code。
+// CleanupExpiredAuthorizationCodes 删除已过期的 OAuth2 authorization code。
 // 返回被删除的行数。
 func (os *OAuth2Service) CleanupExpiredAuthorizationCodes() (int64, error) {
 	now := time.Now()
-	result := database.DB.Where("expires_at < ? OR consumed_at IS NOT NULL", now).
+	result := database.DB.Where("expires_at < ?", now).
 		Delete(&models.OAuth2AuthorizationCode{})
 	if result.Error != nil {
 		return 0, result.Error

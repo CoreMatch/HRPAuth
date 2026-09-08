@@ -45,6 +45,6 @@ func (occ *OAuth2CleanupController) runOnce() {
 	if deleted, err := occ.oauth2Service.CleanupExpiredAuthorizationCodes(); err != nil {
 		log.Printf("[OAuth2Cleanup] failed to clean authorization codes: %v", err)
 	} else if deleted > 0 {
-		log.Printf("[OAuth2Cleanup] removed %d expired/consumed authorization codes", deleted)
+		log.Printf("[OAuth2Cleanup] removed %d expired authorization codes", deleted)
 	}
 }
