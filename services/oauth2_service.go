@@ -228,12 +228,20 @@ func (os *OAuth2Service) ExchangeAuthorizationCode(clientID, code, redirectURI, 
 		return nil, nil, err
 	}
 
+	// 原子标记 consumed_at：只有首个并发请求能影响 1 行，其余请求 RowsAffected==0。
+	now := time.Now()
+	res := database.DB.Model(&models.OAuth2AuthorizationCode{}).
+		Where("code = ? AND consumed_at IS NULL AND expires_at > ?", code, now).
+		Update("consumed_at", &now)
+	if res.Error != nil {
+		return nil, nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, nil, ErrOAuthInvalidGrant
+	}
+
 	accessToken, refreshToken, err := os.issueUserTokens(clientID, authCode.UserID, scopes)
 	if err != nil {
-		return nil, nil, err
-	}
-	now := time.Now()
-	if err := database.DB.Model(&authCode).Update("consumed_at", &now).Error; err != nil {
 		return nil, nil, err
 	}
 	return accessToken, refreshToken, nil
@@ -251,12 +259,21 @@ func (os *OAuth2Service) RefreshUserToken(clientID, refreshTokenValue string) (*
 	if err := json.Unmarshal([]byte(refreshToken.Scopes), &scopes); err != nil {
 		return nil, nil, err
 	}
+
+	// 原子撤销 refresh token：首个并发请求成功，重复请求 RowsAffected==0。
+	now := time.Now()
+	res := database.DB.Model(&models.OAuth2RefreshToken{}).
+		Where("refresh_token = ? AND revoked_at IS NULL AND expires_at > ?", refreshTokenValue, now).
+		Update("revoked_at", &now)
+	if res.Error != nil {
+		return nil, nil, res.Error
+	}
+	if res.RowsAffected == 0 {
+		return nil, nil, ErrOAuthInvalidGrant
+	}
+
 	accessToken, newRefreshToken, err := os.issueUserTokens(clientID, refreshToken.UserID, scopes)
 	if err != nil {
-		return nil, nil, err
-	}
-	now := time.Now()
-	if err := database.DB.Model(&refreshToken).Update("revoked_at", &now).Error; err != nil {
 		return nil, nil, err
 	}
 	return accessToken, newRefreshToken, nil
