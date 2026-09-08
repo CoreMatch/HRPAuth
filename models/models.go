@@ -46,11 +46,12 @@ func (Profile) TableName() string {
 }
 
 type ProfileProperty struct {
-	ID        int    `gorm:"primaryKey;autoIncrement;column:id"`
-	ProfileID string `gorm:"type:varchar(32);column:profile_id;index"`
-	Name      string `gorm:"type:varchar(255);column:name"`
-	Value     string `gorm:"type:text;column:value"`
-	Signature string `gorm:"type:text;column:signature"`
+	ID         int    `gorm:"primaryKey;autoIncrement;column:id"`
+	ProfileID  string `gorm:"type:varchar(32);column:profile_id;index"`
+	Name       string `gorm:"type:varchar(255);column:name"`
+	Value      string `gorm:"type:text;column:value"`
+	Signature  string `gorm:"type:text;column:signature"`
+	DeleteWhen int64  `gorm:"type:bigint;not null;default:0;column:delete_when"`
 }
 
 func (ProfileProperty) TableName() string {
