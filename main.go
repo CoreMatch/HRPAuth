@@ -64,6 +64,9 @@ func main() {
 	sessionCleanupCtrl := controllers.NewSessionCleanupController()
 	sessionCleanupCtrl.Start(24 * time.Hour)
 
+	textureCleanupCtrl := controllers.NewTextureCleanupController()
+	textureCleanupCtrl.Start(1 * time.Hour)
+
 	controllers.StartMBETimeoutLoop(30 * time.Second)
 
 	r := gin.Default()

@@ -16,6 +16,7 @@ import (
 	"image/draw"
 	"image/png"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -253,10 +254,13 @@ func (ts *TextureService) UploadTexture(accessToken, profileID, textureType, mod
 }
 
 func (ts *TextureService) UpdateProfileTexture(profileID, textureType, textureURL, model string) error {
+	// Step 1: Mark old active row as orphan.
 	var existingProp models.ProfileProperty
-	result := database.DB.
-		Where("profile_id = ? AND name = ?", profileID, "textures").
-		First(&existingProp)
+	if err := database.DB.
+		Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").
+		First(&existingProp).Error; err == nil {
+		ts.markOldTextureOrphan(&existingProp, textureType)
+	}
 
 	payload := ts.GenerateTexturesPayload(profileID, textureType, textureURL, model)
 	value := base64.StdEncoding.EncodeToString([]byte(payload))
@@ -266,25 +270,69 @@ func (ts *TextureService) UpdateProfileTexture(profileID, textureType, textureUR
 		return err
 	}
 
-	if result.Error != nil {
-		prop := models.ProfileProperty{
-			ProfileID: profileID,
-			Name:      "textures",
-			Value:     value,
-			Signature: signature,
+	// Step 2: Check for an existing orphan row to reactivate.
+	var orphanProp models.ProfileProperty
+	if err := database.DB.
+		Where("profile_id = ? AND name = ? AND delete_when > 0", profileID, "textures").
+		First(&orphanProp).Error; err == nil {
+		orphanProp.Value = value
+		orphanProp.Signature = signature
+		orphanProp.DeleteWhen = 0
+		if err := database.DB.Save(&orphanProp).Error; err != nil {
+			return fmt.Errorf("failed to reactivate orphan profile property: %v", err)
 		}
-		if err := database.DB.Create(&prop).Error; err != nil {
-			return fmt.Errorf("failed to create profile property: %v", err)
-		}
-	} else {
-		existingProp.Value = value
-		existingProp.Signature = signature
-		if err := database.DB.Save(&existingProp).Error; err != nil {
-			return fmt.Errorf("failed to update profile property: %v", err)
-		}
+		return nil
+	}
+
+	// Step 3: No existing row — create new.
+	prop := models.ProfileProperty{
+		ProfileID: profileID,
+		Name:      "textures",
+		Value:     value,
+		Signature: signature,
+	}
+	if err := database.DB.Create(&prop).Error; err != nil {
+		return fmt.Errorf("failed to create profile property: %v", err)
 	}
 
 	return nil
+}
+
+// markOldTextureOrphan extracts the old texture file hash for the given type
+// from the current payload and sets delete_when on the row so the old file
+// becomes eligible for cleanup.
+func (ts *TextureService) markOldTextureOrphan(prop *models.ProfileProperty, textureType string) {
+	decoded, err := base64.StdEncoding.DecodeString(prop.Value)
+	if err != nil {
+		return
+	}
+	var payload TexturesPayload
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return
+	}
+	info, ok := payload.Textures[strings.ToUpper(textureType)]
+	if !ok || info.URL == "" {
+		return
+	}
+	parts := strings.Split(info.URL, "/textures/")
+	if len(parts) < 2 {
+		return
+	}
+	oldHash := parts[len(parts)-1]
+	if oldHash == "" {
+		return
+	}
+	// Skip if the old file is the same as the new one (no change needed).
+	_ = oldHash
+
+	expiryDays := config.AppConfig.Storage.OrphanFileExpiryDays
+	if expiryDays <= 0 {
+		expiryDays = 7
+	}
+	deleteWhen := time.Now().Unix() + int64(expiryDays)*86400
+	database.DB.Model(&models.ProfileProperty{}).
+		Where("id = ?", prop.ID).
+		Update("delete_when", deleteWhen)
 }
 
 func (ts *TextureService) GenerateTexturesPayload(profileID, textureType, textureURL, model string) string {
@@ -292,7 +340,7 @@ func (ts *TextureService) GenerateTexturesPayload(profileID, textureType, textur
 
 	var existingProp models.ProfileProperty
 	database.DB.
-		Where("profile_id = ? AND name = ?", profileID, "textures").
+		Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").
 		First(&existingProp)
 
 	if existingProp.ID != 0 {
@@ -393,7 +441,7 @@ func (ts *TextureService) RemoveTextureByUser(userID, profileID, textureType str
 
 	var prop models.ProfileProperty
 	result := database.DB.
-		Where("profile_id = ? AND name = ?", profileID, "textures").
+		Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").
 		First(&prop)
 
 	if result.Error != nil {
@@ -413,8 +461,14 @@ func (ts *TextureService) RemoveTextureByUser(userID, profileID, textureType str
 	delete(payload.Textures, strings.ToUpper(textureType))
 
 	if len(payload.Textures) == 0 {
-		if err := database.DB.Delete(&prop).Error; err != nil {
-			return fmt.Errorf("failed to delete profile property: %v", err)
+		// Mark entire row as orphan instead of deleting it.
+		expiryDays := config.AppConfig.Storage.OrphanFileExpiryDays
+		if expiryDays <= 0 {
+			expiryDays = 7
+		}
+		prop.DeleteWhen = time.Now().Unix() + int64(expiryDays)*86400
+		if err := database.DB.Save(&prop).Error; err != nil {
+			return fmt.Errorf("failed to mark profile property as orphan: %v", err)
 		}
 	} else {
 		payload.Timestamp = time.Now().UnixMilli()
@@ -448,7 +502,7 @@ func (ts *TextureService) RemoveTexture(accessToken, profileID, textureType stri
 
 	var prop models.ProfileProperty
 	result := database.DB.
-		Where("profile_id = ? AND name = ?", profileID, "textures").
+		Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").
 		First(&prop)
 
 	if result.Error != nil {
@@ -468,8 +522,14 @@ func (ts *TextureService) RemoveTexture(accessToken, profileID, textureType stri
 	delete(payload.Textures, strings.ToUpper(textureType))
 
 	if len(payload.Textures) == 0 {
-		if err := database.DB.Delete(&prop).Error; err != nil {
-			return fmt.Errorf("failed to delete profile property: %v", err)
+		// Mark entire row as orphan instead of deleting it.
+		expiryDays := config.AppConfig.Storage.OrphanFileExpiryDays
+		if expiryDays <= 0 {
+			expiryDays = 7
+		}
+		prop.DeleteWhen = time.Now().Unix() + int64(expiryDays)*86400
+		if err := database.DB.Save(&prop).Error; err != nil {
+			return fmt.Errorf("failed to mark profile property as orphan: %v", err)
 		}
 	} else {
 		payload.Timestamp = time.Now().UnixMilli()
@@ -494,7 +554,7 @@ func (ts *TextureService) RemoveTexture(accessToken, profileID, textureType stri
 func (ts *TextureService) GetProfileProperties(profileID string, unsigned bool) ([]models.ProfileProperty, error) {
 	var props []models.ProfileProperty
 	result := database.DB.
-		Where("profile_id = ?", profileID).
+		Where("profile_id = ? AND (name != ? OR delete_when = 0)", profileID, "textures").
 		Find(&props)
 
 	if result.Error != nil {
@@ -531,7 +591,7 @@ func (ts *TextureService) GetProfileProperties(profileID string, unsigned bool) 
 func (ts *TextureService) GetTextureByProfile(profileID, textureType string) (*TextureInfo, error) {
 	var prop models.ProfileProperty
 	result := database.DB.
-		Where("profile_id = ? AND name = ?", profileID, "textures").
+		Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").
 		First(&prop)
 
 	if result.Error != nil {
@@ -569,7 +629,7 @@ func (ts *TextureService) GetSkinTexturePathByProfileName(name string) (string, 
 
 	var prop models.ProfileProperty
 	if err := database.DB.
-		Where("profile_id = ? AND name = ?", profile.ID, "textures").
+		Where("profile_id = ? AND name = ? AND delete_when = 0", profile.ID, "textures").
 		First(&prop).Error; err != nil {
 		return "", fmt.Errorf("texture not found")
 	}
@@ -749,7 +809,7 @@ func (ts *TextureService) GetProfileIDFromTextureURL(textureURL string) (string,
 
 	var prop models.ProfileProperty
 	result := database.DB.
-		Where("value LIKE ?", "%"+hash+"%").
+		Where("value LIKE ? AND delete_when = 0", "%"+hash+"%").
 		First(&prop)
 
 	if result.Error != nil {
@@ -757,4 +817,41 @@ func (ts *TextureService) GetProfileIDFromTextureURL(textureURL string) (string,
 	}
 
 	return prop.ProfileID, nil
+}
+
+// CleanupOrphanedTextures finds expired orphan rows, deletes their disk files,
+// and removes the DB rows. Returns the number of cleaned-up rows.
+func (ts *TextureService) CleanupOrphanedTextures() int {
+	var orphans []models.ProfileProperty
+	now := time.Now().Unix()
+	if err := database.DB.
+		Where("name = ? AND delete_when > 0 AND delete_when <= ?", "textures", now).
+		Find(&orphans).Error; err != nil {
+		log.Printf("[TextureCleanup] failed to query orphaned textures: %v", err)
+		return 0
+	}
+
+	deleted := 0
+	for _, orphan := range orphans {
+		// Extract all file hashes from the JSON payload and delete them.
+		decoded, err := base64.StdEncoding.DecodeString(orphan.Value)
+		if err == nil {
+			var payload TexturesPayload
+			if err := json.Unmarshal(decoded, &payload); err == nil {
+				for _, info := range payload.Textures {
+					parts := strings.Split(info.URL, "/textures/")
+					if len(parts) >= 2 {
+						ts.DeleteTexture(parts[len(parts)-1])
+					}
+				}
+			}
+		}
+		if err := database.DB.Delete(&orphan).Error; err != nil {
+			log.Printf("[TextureCleanup] failed to delete orphan row %d: %v", orphan.ID, err)
+			continue
+		}
+		deleted++
+	}
+
+	return deleted
 }
