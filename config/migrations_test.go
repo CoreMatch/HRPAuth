@@ -36,7 +36,7 @@ func TestMigrateConfigUpToDate(t *testing.T) {
 }
 
 func TestMigrateConfigFutureVersion(t *testing.T) {
-	cfg := map[string]interface{}{"version": "7", "site": map[string]interface{}{"name": "future"}}
+	cfg := map[string]interface{}{"version": "8", "site": map[string]interface{}{"name": "future"}}
 	out, changed, err := MigrateConfig(cfg, tokenGen)
 	if err != nil {
 		t.Fatalf("future version must warn and continue, got error: %v", err)
@@ -44,7 +44,7 @@ func TestMigrateConfigFutureVersion(t *testing.T) {
 	if changed {
 		t.Fatal("expected no migration for a newer config")
 	}
-	if out["version"] != "7" {
+	if out["version"] != "8" {
 		t.Fatalf("expected untouched version, got %v", out["version"])
 	}
 }
@@ -383,5 +383,69 @@ func TestMigrateV1ChainToV6(t *testing.T) {
 	}
 	if storage["orphan_file_expiry_days"] != 7 {
 		t.Errorf("expected orphan_file_expiry_days 7, got %v", storage["orphan_file_expiry_days"])
+	}
+
+	// v7: super_client_extra_scopes added
+	oauth2, ok := out["oauth2"].(map[string]interface{})
+	if !ok {
+		t.Fatal("oauth2 section missing after chain migration")
+	}
+	if _, exists := oauth2["super_client_extra_scopes"]; !exists {
+		t.Error("super_client_extra_scopes should be present after v7 migration")
+	}
+}
+
+func TestMigrateV6ToV7AddsSuperClientExtraScopes(t *testing.T) {
+	cfg := map[string]interface{}{
+		"version": "6",
+		"oauth2": map[string]interface{}{
+			"super_client_id":     "hrpauth-internal-super",
+			"super_client_secret": "test-secret",
+		},
+	}
+
+	out, changed, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected migration to run")
+	}
+	if out["version"] != ConfigVersion {
+		t.Fatalf("expected version %q, got %v", ConfigVersion, out["version"])
+	}
+
+	oauth2, ok := out["oauth2"].(map[string]interface{})
+	if !ok {
+		t.Fatal("oauth2 section missing after v6->v7")
+	}
+	if _, exists := oauth2["super_client_extra_scopes"]; !exists {
+		t.Error("super_client_extra_scopes should be present after v7 migration")
+	}
+}
+
+func TestMigrateV6ToV7PreservesExistingExtraScopes(t *testing.T) {
+	cfg := map[string]interface{}{
+		"version": "6",
+		"oauth2": map[string]interface{}{
+			"super_client_extra_scopes": []interface{}{"db.line.read", "db.line.write"},
+		},
+	}
+
+	out, changed, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected migration to run")
+	}
+
+	oauth2 := out["oauth2"].(map[string]interface{})
+	scopes, ok := oauth2["super_client_extra_scopes"].([]interface{})
+	if !ok {
+		t.Fatal("super_client_extra_scopes should be a slice")
+	}
+	if len(scopes) != 2 {
+		t.Errorf("expected 2 existing scopes preserved, got %d", len(scopes))
 	}
 }

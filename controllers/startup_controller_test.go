@@ -50,8 +50,8 @@ yggdrasil:
 		t.Fatalf("failed to parse migrated config: %v", err)
 	}
 
-	if cfg["version"] != "4" {
-		t.Fatalf("expected version 4 after migration, got %v", cfg["version"])
+	if cfg["version"] != "7" {
+		t.Fatalf("expected version 7 after migration, got %v", cfg["version"])
 	}
 	sec, ok := cfg["security"].(map[string]interface{})
 	if !ok {

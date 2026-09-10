@@ -27,6 +27,7 @@ type ConfigMigration struct {
 //   - "4":   oauth2 section introduced for site-side OAuth2 authorization
 //   - "5":   yggdrasil.security.max_texture_file_size added (default 512000)
 //   - "6":   top-level storage section with orphan_file_expiry_days (default 7)
+//   - "7":   oauth2.super_client_extra_scopes added for database scope delegation
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
@@ -34,6 +35,7 @@ func configMigrations() []ConfigMigration {
 		{FromVersion: "3", ToVersion: "4", Migrate: migrateV3ToV4},
 		{FromVersion: "4", ToVersion: "5", Migrate: migrateV4ToV5},
 		{FromVersion: "5", ToVersion: "6", Migrate: migrateV5ToV6},
+		{FromVersion: "6", ToVersion: "7", Migrate: migrateV6ToV7},
 	}
 }
 
@@ -320,5 +322,21 @@ func migrateV5ToV6(cfg map[string]interface{}, tokenGen func() string) error {
 	}
 	cfg["storage"] = storage
 	cfg["version"] = "6"
+	return nil
+}
+
+// migrateV6ToV7 adds super_client_extra_scopes to the oauth2 section.
+// This allows administrators to grant additional scopes (e.g. db.*) to the
+// built-in super client without changing default behaviour.
+func migrateV6ToV7(cfg map[string]interface{}, tokenGen func() string) error {
+	oauth2, _ := cfg["oauth2"].(map[string]interface{})
+	if oauth2 == nil {
+		oauth2 = map[string]interface{}{}
+	}
+	if _, exists := oauth2["super_client_extra_scopes"]; !exists {
+		oauth2["super_client_extra_scopes"] = []interface{}{}
+	}
+	cfg["oauth2"] = oauth2
+	cfg["version"] = "7"
 	return nil
 }

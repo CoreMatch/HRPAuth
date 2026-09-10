@@ -105,7 +105,21 @@ func (os *OAuth2Service) upsertBuiltInPublicClient(tx *gorm.DB) error {
 }
 
 func (os *OAuth2Service) upsertBuiltInSuperClient(tx *gorm.DB) error {
-	scopesJSON, err := marshalStringSlice(serviceSiteScopes())
+	// Start with the default service scopes and merge any extra scopes from
+	// config. Extra scopes are validated against the known database scope list
+	// so that only db.* scopes can be delegated this way.
+	scopes := serviceSiteScopes()
+	for _, extra := range config.AppConfig.OAuth2.SuperClientExtraScopes {
+		extra = strings.TrimSpace(extra)
+		if extra == "" {
+			continue
+		}
+		if slices.Contains(databaseScopes(), extra) && !slices.Contains(scopes, extra) {
+			scopes = append(scopes, extra)
+		}
+	}
+
+	scopesJSON, err := marshalStringSlice(scopes)
 	if err != nil {
 		return err
 	}
@@ -501,6 +515,19 @@ func targetedServiceScopes() []string {
 		"texture.get.as-service",
 		"totp.setup.as-service",
 		"totp.status.as-service",
+	}
+}
+
+// databaseScopes returns the set of database-related scopes. These are NOT
+// included in the built-in super client's default scopes and must be
+// explicitly granted via config (oauth2.super_client_extra_scopes).
+func databaseScopes() []string {
+	return []string{
+		"db.line.read",
+		"db.line.write",
+		"db.line.delete",
+		"db.table.create",
+		"db.table.delete",
 	}
 }
 

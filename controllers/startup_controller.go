@@ -117,6 +117,7 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 			"refresh_token_ttl_sec":      2592000,
 			"super_client_id":            "hrpauth-internal-super",
 			"super_client_secret":        sc.generateManageToken(),
+			"super_client_extra_scopes":  []string{},
 			"public_client_id":           "hrpauth-webui",
 			"public_redirect_uris": []string{
 				frontendURL + "oauth/callback",

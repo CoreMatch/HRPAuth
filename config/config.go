@@ -127,14 +127,15 @@ type SecurityConfig struct {
 }
 
 type OAuth2Config struct {
-	Issuer               string
-	AuthorizationCodeTTL int
-	AccessTokenTTL       int
-	RefreshTokenTTL      int
-	SuperClientID        string
-	SuperClientSecret    string
-	PublicClientID       string
-	PublicRedirectURIs   []string
+	Issuer                string
+	AuthorizationCodeTTL  int
+	AccessTokenTTL        int
+	RefreshTokenTTL       int
+	SuperClientID         string
+	SuperClientSecret     string
+	SuperClientExtraScopes []string
+	PublicClientID        string
+	PublicRedirectURIs    []string
 }
 
 // YggdrasilSecurityConfig is the Yggdrasil-protocol-related security settings
@@ -160,7 +161,7 @@ type FeatureFlagsConfig struct {
 
 const ConfigFileName = "config.yaml"
 const ConfigFileDir = "./"
-const ConfigVersion = "6"
+const ConfigVersion = "7"
 
 var AppConfig *Config
 
@@ -341,14 +342,15 @@ func parseOAuth2Config(config map[string]interface{}) OAuth2Config {
 	}
 
 	return OAuth2Config{
-		Issuer:               issuer,
-		AuthorizationCodeTTL: authCodeTTL,
-		AccessTokenTTL:       accessTokenTTL,
-		RefreshTokenTTL:      refreshTokenTTL,
-		SuperClientID:        getString(oauth2, "super_client_id"),
-		SuperClientSecret:    getString(oauth2, "super_client_secret"),
-		PublicClientID:       getString(oauth2, "public_client_id"),
-		PublicRedirectURIs:   publicRedirectURIs,
+		Issuer:                issuer,
+		AuthorizationCodeTTL:  authCodeTTL,
+		AccessTokenTTL:        accessTokenTTL,
+		RefreshTokenTTL:       refreshTokenTTL,
+		SuperClientID:         getString(oauth2, "super_client_id"),
+		SuperClientSecret:     getString(oauth2, "super_client_secret"),
+		SuperClientExtraScopes: getStringSlice(oauth2, "super_client_extra_scopes"),
+		PublicClientID:        getString(oauth2, "public_client_id"),
+		PublicRedirectURIs:    publicRedirectURIs,
 	}
 }
 
