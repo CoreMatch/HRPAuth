@@ -58,6 +58,18 @@ type ClaimUserRequest struct {
 	Password string `json:"password"`
 }
 
+// ForceBindRequest is the body for POST /admin/force-bind. Operators transfer
+// the mojang_uuid from a proxy-registered account (cbh=0) to a manually
+// registered account identified by email+password, then delete the proxy
+// account. A valid manage_token is required in addition to the OAuth2
+// Service Token.
+type ForceBindRequest struct {
+	Username    string `json:"username"`
+	Email       string `json:"email"`
+	Password    string `json:"password"`
+	ManageToken string `json:"manage_token"`
+}
+
 func isValidEmail(email string) bool {
 	_, err := mail.ParseAddress(email)
 	return err == nil
@@ -529,5 +541,104 @@ func (ac *AuthController) ClaimUser(c *gin.Context) {
 		"uid":      target.UID,
 		"username": target.Username,
 		"email":    req.Email,
+	})
+}
+
+// ForceBind handles POST /admin/force-bind. It transfers the mojang_uuid from
+// a proxy-registered account (cbh=0) to a manually registered account, then
+// deletes the proxy account. Authentication requires both an OAuth2 Service
+// Token and a valid manage_token in the request body.
+//
+// Pre-conditions:
+//   - Caller must present an OAuth2 Service Token.
+//   - manage_token must match the server-configured Manage Token.
+//   - Source account: username must exist AND cbh=0 AND have a mojang_uuid.
+//   - Target account: email+password must authenticate an existing user.
+//
+// On success: mojang_uuid is transferred to the target account and the source
+// proxy account is permanently deleted in a single transaction.
+func (ac *AuthController) ForceBind(c *gin.Context) {
+	accessToken := bearerTokenFromRequest(c)
+	if accessToken == "" {
+		respondError(c, http.StatusUnauthorized, CodeOAuthLoginRequired, "missing bearer token")
+		return
+	}
+	tokenContext, err := services.NewOAuth2Service().ResolveAccessToken(accessToken)
+	if err != nil {
+		respondError(c, http.StatusUnauthorized, CodeOAuthInvalidGrant, "invalid access token")
+		return
+	}
+	if !tokenContext.IsService {
+		respondError(c, http.StatusForbidden, CodeOAuthAccessDenied, "force-bind requires a service token")
+		return
+	}
+
+	var req ForceBindRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
+		return
+	}
+
+	// Validate manage_token.
+	if config.AppConfig.Manage.Token == "" || req.ManageToken != config.AppConfig.Manage.Token {
+		respondError(c, http.StatusForbidden, CodeInvalidManageToken, "invalid manage_token")
+		return
+	}
+
+	username := strings.TrimSpace(req.Username)
+	if len(username) < 3 {
+		respondError(c, http.StatusBadRequest, CodeUsernameTooShort, "Username too short")
+		return
+	}
+	if !isValidEmail(req.Email) {
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
+		return
+	}
+	if len(req.Password) < 6 {
+		respondError(c, http.StatusBadRequest, CodePasswordTooShort, "Password too short")
+		return
+	}
+
+	// Find source: proxy-registered account (cbh=0) by username.
+	var source models.User
+	if err := database.DB.Where("username = ? AND cbh = ?", username, false).First(&source).Error; err != nil {
+		respondError(c, http.StatusNotFound, CodeTargetNotFound, "target proxy account not found")
+		return
+	}
+	if source.MojangUUID == nil || *source.MojangUUID == "" {
+		respondError(c, http.StatusBadRequest, CodeNoMojangUUID, "proxy account has no mojang_uuid to transfer")
+		return
+	}
+
+	// Find target: authenticate by email + password.
+	var target models.User
+	if err := database.DB.Where("email = ?", strings.ToLower(req.Email)).First(&target).Error; err != nil {
+		respondError(c, http.StatusNotFound, CodeTargetNotFound, "target account not found")
+		return
+	}
+	if !utils.CheckPasswordHash(req.Password, target.Password) {
+		respondError(c, http.StatusNotFound, CodeTargetNotFound, "target account credentials are invalid")
+		return
+	}
+
+	// Transfer mojang_uuid in a transaction: update target, then delete source.
+	mojangUUID := *source.MojangUUID
+	err = database.DB.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Model(&target).Update("mojang_uuid", mojangUUID).Error; err != nil {
+			return err
+		}
+		if err := tx.Delete(&source).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to transfer mojang_uuid")
+		return
+	}
+
+	respondOK(c, "Force bind successful", gin.H{
+		"username": target.Username,
+		"email":    target.Email,
 	})
 }

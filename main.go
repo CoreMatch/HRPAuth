@@ -151,6 +151,7 @@ func main() {
 		api.POST("/register", authCtrl.Register)
 		api.GET("/logout", authCtrl.Logout)
 		api.POST("/admin/claim-user", authCtrl.ClaimUser)
+		api.POST("/admin/force-bind", authCtrl.ForceBind)
 		api.POST("/user", userInfoCtrl.GetUser)
 		api.POST("/user/declare-email", userInfoCtrl.DeclareEmail)
 		api.POST("/user/mojang-bind-enable", userInfoCtrl.EnableMojangBind)
