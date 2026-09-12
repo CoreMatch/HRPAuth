@@ -27,6 +27,11 @@ type DeclareEmailRequest struct {
 	PlayerName string `json:"playername"`
 }
 
+type LookupUserRequest struct {
+	UID      *uint   `json:"uid"`
+	Username *string `json:"username"`
+}
+
 func normalizeDeclaredEmail(raw string) (string, error) {
 	normalized := strings.TrimSpace(strings.ToLower(raw))
 	if normalized == "" {
@@ -253,5 +258,52 @@ func (uc *UserInfoController) DisableMojangBind(c *gin.Context) {
 	respondOK(c, "Mojang bind disabled", gin.H{
 		"uid": user.UID,
 		"mbe": 0,
+	})
+}
+
+// LookupUser resolves a username from a UID, or a UID from a username.
+//
+// POST /user/lookup
+// Body (JSON): { "uid": 42 }  → returns { "uid": 42, "username": "..." }
+//
+//	or  { "username": "Steve" } → returns { "uid": 42, "username": "Steve" }
+//
+// Public endpoint — no authentication required.
+func (uc *UserInfoController) LookupUser(c *gin.Context) {
+	var req LookupUserRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "invalid request body")
+		return
+	}
+
+	hasUID := req.UID != nil
+	hasUsername := req.Username != nil && strings.TrimSpace(*req.Username) != ""
+
+	if !hasUID && !hasUsername {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "please provide uid or username")
+		return
+	}
+	if hasUID && hasUsername {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "please provide only uid or username, not both")
+		return
+	}
+
+	var user models.User
+	var err error
+
+	if hasUID {
+		err = database.DB.Where("uid = ?", *req.UID).First(&user).Error
+	} else {
+		err = database.DB.Where("username = ?", strings.TrimSpace(*req.Username)).First(&user).Error
+	}
+
+	if err != nil {
+		respondError(c, http.StatusNotFound, CodeUserNotFound, "user not found")
+		return
+	}
+
+	respondOK(c, "lookup successful", gin.H{
+		"uid":      user.UID,
+		"username": user.Username,
 	})
 }

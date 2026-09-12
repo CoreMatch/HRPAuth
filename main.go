@@ -153,6 +153,7 @@ func main() {
 		api.POST("/admin/claim-user", authCtrl.ClaimUser)
 		api.POST("/admin/force-bind", authCtrl.ForceBind)
 		api.POST("/user", userInfoCtrl.GetUser)
+		api.POST("/user/lookup", userInfoCtrl.LookupUser)
 		api.POST("/user/declare-email", userInfoCtrl.DeclareEmail)
 		api.POST("/user/mojang-bind-enable", userInfoCtrl.EnableMojangBind)
 		api.POST("/user/mojang-bind-disable", userInfoCtrl.DisableMojangBind)
