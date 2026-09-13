@@ -597,38 +597,6 @@ func (as *AuthService) GetProfileByName(name string) *models.Profile {
 	return &profile
 }
 
-// ResolveToken attempts to authenticate the given token under the declared
-// auth type. It supports two kinds of requests:
-//   - auth_type "manage": the token is matched against the operator-level
-//     Manage Token (M-T) stored in config.AppConfig.Manage.Token. When matched,
-//     the request is treated as authenticated and the caller must identify the
-//     target user via uid/email where the endpoint requires one. The returned
-//     *models.User is nil and isManage is true.
-//   - auth_type "remember" (default, when undeclared): a regular user's
-//     remember_token. When matched, the user is returned and isManage is false.
-//
-// If neither matches, (nil, false) is returned and the request is unauthorized.
-// A token that merely equals the M-T is NOT promoted to the manage path unless
-// authType == "manage" was declared.
-func (as *AuthService) ResolveToken(token, authType string) (*models.User, bool) {
-	if token == "" {
-		return nil, false
-	}
-
-	if authType == "manage" {
-		if config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token {
-			return nil, true
-		}
-		return nil, false
-	}
-
-	var user models.User
-	if err := database.DB.Where("remember_token = ?", token).First(&user).Error; err != nil {
-		return nil, false
-	}
-	return &user, false
-}
-
 // IsManageToken reports whether the request is a genuine Manage Token (M-T)
 // request: the caller declared auth_type "manage" AND the token equals the
 // operator-level Manage Token from config.

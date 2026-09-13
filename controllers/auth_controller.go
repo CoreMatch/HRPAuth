@@ -39,10 +39,6 @@ type RegisterRequest struct {
 	MojangUUID   string `json:"mojang_uuid"`
 }
 
-type LogoutRequest struct {
-	RememberToken string `json:"remember_token"`
-}
-
 type LoginByMTRequest struct {
 	UID         uint   `json:"uid"`
 	Email       string `json:"email"`
@@ -89,44 +85,6 @@ func isValidMojangUUID(s string) bool {
 	return true
 }
 
-// authTypeFromRequest returns the declared token auth type. It is read from
-// the JSON body, then form fields, then query params — mirroring how
-// remember_token is collected. When undeclared it defaults to "remember".
-// Supported values: "remember" (default) and "manage".
-func authTypeFromRequest(c *gin.Context, jsonAuthType string) string {
-	authType := jsonAuthType
-	if authType == "" {
-		authType = c.PostForm("auth_type")
-	}
-	if authType == "" {
-		authType = c.Query("auth_type")
-	}
-	if authType == "" {
-		authType = "remember"
-	}
-	return authType
-}
-
-// isManageRequest classifies a request by its declared auth_type:
-//   - undeclared / "remember"          -> (false, true)   remember-token path
-//   - "manage" + token == Manage.Token -> (true, true)    genuine M-T request
-//   - anything else (unknown value, or "manage" with a token that does not
-//     match the configured M-T)        -> (false, false)  caller should reject
-//
-// The frontend must declare "manage" explicitly; a plain token that happens to
-// equal the M-T is no longer auto-promoted to the manage path.
-func isManageRequest(c *gin.Context, token, jsonAuthType string) (isManage, valid bool) {
-	switch authTypeFromRequest(c, jsonAuthType) {
-	case "manage":
-		if config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token {
-			return true, true
-		}
-		return false, false
-	default:
-		return false, true
-	}
-}
-
 func (ac *AuthController) Login(c *gin.Context) {
 	respondError(c, http.StatusGone, CodeEndpointDeprecated, "POST /login is deprecated; use OAuth2 endpoints instead")
 }
@@ -153,9 +111,8 @@ func (ac *AuthController) Register(c *gin.Context) {
 		return
 	}
 
-	// Service-side proxy registration now uses OAuth2 Bearer tokens instead of
-	// remember_token/auth_type=manage. No Authorization header => normal user
-	// registration path.
+	// Service-side proxy registration uses OAuth2 Bearer tokens.
+	// No Authorization header => normal user registration path.
 	isManage := false
 	accessToken := bearerTokenFromRequest(c)
 	if accessToken != "" {
