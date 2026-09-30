@@ -25,6 +25,7 @@ type User struct {
 	// When 0 (default), colliding Mojang players get 409 (HA priority).
 	MBE        bool    `gorm:"type:tinyint(1);not null;default:0;column:mbe"`
 	MojangUUID *string `gorm:"type:varchar(32);column:mojang_uuid;uniqueIndex:uk_users_mojang_uuid"`
+	DeletedAt  *time.Time `gorm:"index;column:deleted_at"`
 }
 
 func (User) TableName() string {

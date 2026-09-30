@@ -9,6 +9,8 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
+	"github.com/lnb/HRPAuth-Backend-Go/utils"
+	"gorm.io/gorm"
 )
 
 type UserInfoController struct{}
@@ -30,6 +32,10 @@ type DeclareEmailRequest struct {
 type LookupUserRequest struct {
 	UID      *uint   `json:"uid"`
 	Username *string `json:"username"`
+}
+
+type DeleteAccountRequest struct {
+	Password string `json:"password" binding:"required"`
 }
 
 func normalizeDeclaredEmail(raw string) (string, error) {
@@ -306,4 +312,53 @@ func (uc *UserInfoController) LookupUser(c *gin.Context) {
 		"uid":      user.UID,
 		"username": user.Username,
 	})
+}
+
+func (uc *UserInfoController) DeleteAccount(c *gin.Context) {
+	var req DeleteAccountRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "password is required")
+		return
+	}
+
+	authResult, ok := resolveSiteBearerAuth(c, "user.delete", "user.delete.as-service", false, "", "")
+	if !ok {
+		return
+	}
+	user := authResult.User
+
+	// 验证密码
+	if !utils.CheckPasswordHash(req.Password, user.Password) {
+		respondError(c, http.StatusForbidden, CodeInvalidCredentials, "密码错误")
+		return
+	}
+
+	err := database.DB.Transaction(func(tx *gorm.DB) error {
+		// 清理相关令牌
+		if err := tx.Where("user_id = ?", user.UUID).Delete(&models.Token{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", user.UUID).Delete(&models.OAuth2AuthorizationCode{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", user.UUID).Delete(&models.OAuth2AccessToken{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", user.UUID).Delete(&models.OAuth2RefreshToken{}).Error; err != nil {
+			return err
+		}
+
+		// 软删除用户
+		if err := tx.Delete(user).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "注销失败")
+		return
+	}
+
+	respondOK(c, "账号注销成功", nil)
 }
