@@ -157,6 +157,7 @@ func main() {
 		api.POST("/admin/force-bind", authCtrl.ForceBind)
 		api.POST("/user", userInfoCtrl.GetUser)
 		api.DELETE("/user", userInfoCtrl.DeleteAccount)
+		api.GET("/user/deleted", userInfoCtrl.ListDeletedAccounts)
 		api.POST("/user/lookup", userInfoCtrl.LookupUser)
 		api.POST("/user/declare-email", userInfoCtrl.DeclareEmail)
 		api.POST("/user/mojang-bind-enable", userInfoCtrl.EnableMojangBind)

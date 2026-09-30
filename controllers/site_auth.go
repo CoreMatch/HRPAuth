@@ -115,6 +115,7 @@ func loadTargetUser(uid string, email string) (*models.User, bool) {
 	}
 
 	var user models.User
+	// 使用普通 DB 查询，不包含软删除（标记为冷静期）的用户
 	if err := query.First(&user).Error; err != nil {
 		return nil, false
 	}

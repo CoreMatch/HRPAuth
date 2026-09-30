@@ -314,6 +314,12 @@ func (os *OAuth2Service) IssueClientCredentialsToken(client *models.OAuth2Client
 	}
 	if targetUID != "" {
 		if uid, ok := utils.ParseUintString(targetUID); ok {
+			// 检查目标用户是否在冷静期（已软删除）
+			var count int64
+			database.DB.Model(&models.User{}).Where("uid = ?", uid).Count(&count)
+			if count == 0 {
+				return nil, ErrOAuthInvalidTarget
+			}
 			token.TargetUID = &uid
 		} else {
 			return nil, ErrOAuthInvalidTarget
@@ -321,6 +327,12 @@ func (os *OAuth2Service) IssueClientCredentialsToken(client *models.OAuth2Client
 	}
 	if targetEmail != "" {
 		targetEmail = strings.TrimSpace(strings.ToLower(targetEmail))
+		// 检查目标用户是否在冷静期
+		var count int64
+		database.DB.Model(&models.User{}).Where("email = ?", targetEmail).Count(&count)
+		if count == 0 {
+			return nil, ErrOAuthInvalidTarget
+		}
 		token.TargetEmail = &targetEmail
 	}
 	if err := database.DB.Create(token).Error; err != nil {

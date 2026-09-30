@@ -62,7 +62,12 @@ func (as *AuthService) VerifyCredentials(identifier, password string, allowUsern
 
 	// 如果账号之前标记了删除，登录成功则解除删除标记（恢复账号）
 	if user.DeletedAt != nil {
-		database.DB.Model(&user).Update("deleted_at", nil)
+		database.DB.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Model(&user).Update("deleted_at", nil).Error; err != nil {
+				return err
+			}
+			return tx.Where("uid = ?", user.UID).Delete(&models.DeletedAccount{}).Error
+		})
 	}
 
 	return &UserInfo{
@@ -212,6 +217,11 @@ func (as *AuthService) deleteUserCascade(u models.User) error {
 			return err
 		}
 		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.ProfileKey{}).Error; err != nil {
+			return err
+		}
+
+		// 从已删除账号记录表中移除
+		if err := tx.Where("uid = ?", u.UID).Delete(&models.DeletedAccount{}).Error; err != nil {
 			return err
 		}
 

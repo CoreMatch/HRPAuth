@@ -178,3 +178,12 @@ type ProfileKey struct {
 func (ProfileKey) TableName() string {
 	return "profile_keys"
 }
+
+type DeletedAccount struct {
+	UID       uint      `gorm:"primaryKey;column:uid"`
+	DeletedAt time.Time `gorm:"column:deleted_at"`
+}
+
+func (DeletedAccount) TableName() string {
+	return "deleted_accounts"
+}

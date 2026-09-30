@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
@@ -352,6 +353,16 @@ func (uc *UserInfoController) DeleteAccount(c *gin.Context) {
 		if err := tx.Delete(user).Error; err != nil {
 			return err
 		}
+
+		// 记录到已删除账号表
+		deletedAcc := models.DeletedAccount{
+			UID:       user.UID,
+			DeletedAt: time.Now(),
+		}
+		if err := tx.Create(&deletedAcc).Error; err != nil {
+			return err
+		}
+
 		return nil
 	})
 
@@ -361,4 +372,22 @@ func (uc *UserInfoController) DeleteAccount(c *gin.Context) {
 	}
 
 	respondOK(c, "账号注销成功", nil)
+}
+
+func (uc *UserInfoController) ListDeletedAccounts(c *gin.Context) {
+	authResult, ok := resolveSiteBearerAuth(c, "user.delete.list", "user.delete.list.as-service", false, "", "")
+	if !ok {
+		return
+	}
+	_ = authResult // 目前不需要从 authResult 中获取额外信息，仅用于鉴权
+
+	var deletedAccounts []models.DeletedAccount
+	if err := database.DB.Order("deleted_at DESC").Find(&deletedAccounts).Error; err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "获取删除列表失败")
+		return
+	}
+
+	respondOK(c, "获取删除列表成功", gin.H{
+		"deleted_accounts": deletedAccounts,
+	})
 }
