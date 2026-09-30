@@ -70,6 +70,9 @@ func main() {
 	oauth2CleanupCtrl := controllers.NewOAuth2CleanupController()
 	oauth2CleanupCtrl.Start(24 * time.Hour)
 
+	accountCleanupCtrl := controllers.NewAccountCleanupController()
+	accountCleanupCtrl.Start(5 * 24 * time.Hour)
+
 	controllers.StartMBETimeoutLoop(30 * time.Second)
 
 	r := gin.Default()

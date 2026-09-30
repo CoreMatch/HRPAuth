@@ -44,12 +44,12 @@ func (as *AuthService) VerifyCredentials(identifier, password string, allowUsern
 	var err error
 
 	if nonEmailLogin {
-		err = database.DB.
+		err = database.DB.Unscoped().
 			Joins("JOIN profiles ON users.uuid = profiles.user_id").
 			Where("users.email = ? OR profiles.name = ?", identifier, identifier).
 			First(&user).Error
 	} else {
-		err = database.DB.Where("email = ?", identifier).First(&user).Error
+		err = database.DB.Unscoped().Where("email = ?", identifier).First(&user).Error
 	}
 
 	if err != nil {
@@ -58,6 +58,11 @@ func (as *AuthService) VerifyCredentials(identifier, password string, allowUsern
 
 	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(password)); err != nil {
 		return nil
+	}
+
+	// 如果账号之前标记了删除，登录成功则解除删除标记（恢复账号）
+	if user.DeletedAt != nil {
+		database.DB.Model(&user).Update("deleted_at", nil)
 	}
 
 	return &UserInfo{
@@ -197,7 +202,21 @@ func (as *AuthService) deleteUserCascade(u models.User) error {
 		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.Token{}).Error; err != nil {
 			return err
 		}
-		return tx.Delete(&u).Error
+		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.OAuth2AuthorizationCode{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.OAuth2AccessToken{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.OAuth2RefreshToken{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.ProfileKey{}).Error; err != nil {
+			return err
+		}
+
+		// 彻底删除用户记录
+		return tx.Unscoped().Delete(&u).Error
 	})
 }
 
@@ -206,6 +225,35 @@ func formatCleanupDate(t *time.Time) string {
 		return "nil"
 	}
 	return t.Format("2006-01-02")
+}
+
+// CleanupDeletedAccounts 彻底删除标记超过3天的账号及其关联数据。
+// 每5天运行一次，标记删除3天后可被清理（实际波动在3-8天）。
+func (as *AuthService) CleanupDeletedAccounts() int {
+	cutoff := time.Now().Add(-3 * 24 * time.Hour)
+
+	var candidates []models.User
+	// 使用 Unscoped 以查询出已标记删除的用户
+	if err := database.DB.Unscoped().Where("deleted_at IS NOT NULL AND deleted_at < ?", cutoff).Find(&candidates).Error; err != nil {
+		log.Printf("[account-cleanup] failed to query candidates: %v", err)
+		return 0
+	}
+
+	deleted := 0
+	for _, u := range candidates {
+		if err := as.deleteUserCascade(u); err != nil {
+			log.Printf("[account-cleanup] ERROR hard deleting uid=%d username=%s: %v", u.UID, u.Username, err)
+			continue
+		}
+		deleted++
+		log.Printf("[account-cleanup] - uid=%d username=%s (marked deleted at %s)",
+			u.UID, u.Username, formatCleanupDate(u.DeletedAt),
+		)
+	}
+	if len(candidates) > 0 {
+		log.Printf("[account-cleanup] scanned %d candidates, hard deleted %d", len(candidates), deleted)
+	}
+	return deleted
 }
 
 func (as *AuthService) RenameProfile(userUUID, profileID, newName string) (*models.Profile, error) {
