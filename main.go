@@ -115,6 +115,7 @@ func main() {
 	yggdrasilCtrl := controllers.NewYggdrasilController()
 	captchaCtrl := controllers.NewCaptchaController()
 	oauth2Ctrl := controllers.NewOAuth2Controller()
+	webauthnCtrl := controllers.NewWebAuthnController()
 
 	if err := services.NewOAuth2Service().EnsureBuiltInClients(); err != nil {
 		log.Fatalf("Failed to ensure OAuth2 built-in clients: %v", err)
@@ -148,6 +149,15 @@ func main() {
 		api.POST("/oauth/authorize/decision", oauth2Ctrl.AuthorizeDecision)
 		api.POST("/oauth/token", oauth2Ctrl.Token)
 		api.POST("/oauth/revoke", oauth2Ctrl.Revoke)
+		api.POST("/webauthn/register/begin", webauthnCtrl.BeginRegistration)
+		api.POST("/webauthn/register/finish", webauthnCtrl.FinishRegistration)
+		api.GET("/webauthn/credentials", webauthnCtrl.ListCredentials)
+		api.DELETE("/webauthn/credentials/:id", webauthnCtrl.DeleteCredential)
+		api.POST("/webauthn/2fa/toggle", webauthnCtrl.Toggle2FA)
+		api.POST("/webauthn/login/begin", webauthnCtrl.BeginLogin)
+		api.POST("/webauthn/login/finish", webauthnCtrl.FinishLogin)
+		api.POST("/webauthn/2fa/begin", webauthnCtrl.BeginSecondFactor)
+		api.POST("/webauthn/2fa/finish", webauthnCtrl.FinishSecondFactor)
 
 		api.POST("/login", authCtrl.Login)
 		api.POST("/loginbymt", authCtrl.LoginByMT)

@@ -90,13 +90,16 @@ func (oc *OAuth2Controller) LoginTicket(c *gin.Context) {
 		return
 	}
 
-	if !fullUser.TwoFA || fullUser.TOTP == "" {
-		accessToken, refreshToken, err := oc.oauth2Service.IssueFirstPartyUserTokens(fullUser.UUID)
-		if err != nil {
-			respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to issue OAuth2 token")
-			return
-		}
-		oc.respondTokenPair(c, accessToken, refreshToken)
+	hasTOTP := fullUser.TwoFA && fullUser.TOTP != ""
+	webAuthnCount, err := services.NewWebAuthnService().CountCredentials(fullUser.UUID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to inspect WebAuthn credentials")
+		return
+	}
+	hasWebAuthn := fullUser.WebAuthn2FAEnabled && webAuthnCount > 0
+
+	if !hasTOTP && !hasWebAuthn {
+		issueAndRespondFirstPartyUserTokens(c, fullUser.UUID, "OAuth2 token issued", nil)
 		return
 	}
 
@@ -110,9 +113,11 @@ func (oc *OAuth2Controller) LoginTicket(c *gin.Context) {
 	}
 
 	respondOK(c, "Login ticket issued", gin.H{
-		"totp_required": true,
-		"login_ticket":  ticket,
-		"expires_in":    config.AppConfig.OAuth2.AuthorizationCodeTTL,
+		"totp_required":     hasTOTP,
+		"webauthn_required": hasWebAuthn,
+		"second_factors":    availableSecondFactors(hasTOTP, hasWebAuthn),
+		"login_ticket":      ticket,
+		"expires_in":        config.AppConfig.OAuth2.AuthorizationCodeTTL,
 	})
 }
 
@@ -305,4 +310,15 @@ func parseScopesOrNil(raw string) []string {
 		return nil
 	}
 	return scopes
+}
+
+func availableSecondFactors(hasTOTP bool, hasWebAuthn bool) []string {
+	factors := make([]string, 0, 2)
+	if hasTOTP {
+		factors = append(factors, "totp")
+	}
+	if hasWebAuthn {
+		factors = append(factors, "webauthn")
+	}
+	return factors
 }

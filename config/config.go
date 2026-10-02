@@ -2,6 +2,7 @@ package config
 
 import (
 	"log"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +15,7 @@ type Config struct {
 	Site             SiteConfig
 	Server           ServerRuntimeConfig
 	Security         SecurityConfig
+	WebAuthn         WebAuthnConfig
 	OAuth2           OAuth2Config
 	Callback         CallbackConfig
 	Frontend         FrontendConfig
@@ -126,16 +128,23 @@ type SecurityConfig struct {
 	CaptchaTTL           int
 }
 
+type WebAuthnConfig struct {
+	RPDisplayName string
+	RPID          string
+	RPOrigins     []string
+	SessionTTL    int
+}
+
 type OAuth2Config struct {
-	Issuer                string
-	AuthorizationCodeTTL  int
-	AccessTokenTTL        int
-	RefreshTokenTTL       int
-	SuperClientID         string
-	SuperClientSecret     string
+	Issuer                 string
+	AuthorizationCodeTTL   int
+	AccessTokenTTL         int
+	RefreshTokenTTL        int
+	SuperClientID          string
+	SuperClientSecret      string
 	SuperClientExtraScopes []string
-	PublicClientID        string
-	PublicRedirectURIs    []string
+	PublicClientID         string
+	PublicRedirectURIs     []string
 }
 
 // YggdrasilSecurityConfig is the Yggdrasil-protocol-related security settings
@@ -195,6 +204,7 @@ func Load() {
 		Site:             parseSiteConfig(yamlConfig),
 		Server:           parseServerRuntimeConfig(yamlConfig),
 		Security:         parseSecurityConfig(yamlConfig),
+		WebAuthn:         parseWebAuthnConfig(yamlConfig),
 		OAuth2:           parseOAuth2Config(yamlConfig),
 		Callback:         parseCallbackConfig(yamlConfig),
 		Frontend:         parseFrontendConfig(yamlConfig),
@@ -310,6 +320,37 @@ func parseStorageConfig(config map[string]interface{}) StorageConfig {
 	}
 }
 
+func parseWebAuthnConfig(config map[string]interface{}) WebAuthnConfig {
+	section, _ := config["webauthn"].(map[string]interface{})
+
+	rpDisplayName := getString(section, "rp_display_name")
+	if rpDisplayName == "" {
+		rpDisplayName = getString(getMap(config, "site"), "name")
+	}
+
+	rpOrigins := getStringSlice(section, "rp_origins")
+	if len(rpOrigins) == 0 {
+		rpOrigins = collectDefaultWebAuthnOrigins(config)
+	}
+
+	rpID := getString(section, "rp_id")
+	if rpID == "" {
+		rpID = deriveWebAuthnRPID(rpOrigins)
+	}
+
+	sessionTTL := getInt(section, "session_ttl_sec")
+	if sessionTTL == 0 {
+		sessionTTL = 300
+	}
+
+	return WebAuthnConfig{
+		RPDisplayName: rpDisplayName,
+		RPID:          rpID,
+		RPOrigins:     rpOrigins,
+		SessionTTL:    sessionTTL,
+	}
+}
+
 func parseOAuth2Config(config map[string]interface{}) OAuth2Config {
 	oauth2, _ := config["oauth2"].(map[string]interface{})
 
@@ -342,15 +383,15 @@ func parseOAuth2Config(config map[string]interface{}) OAuth2Config {
 	}
 
 	return OAuth2Config{
-		Issuer:                issuer,
-		AuthorizationCodeTTL:  authCodeTTL,
-		AccessTokenTTL:        accessTokenTTL,
-		RefreshTokenTTL:       refreshTokenTTL,
-		SuperClientID:         getString(oauth2, "super_client_id"),
-		SuperClientSecret:     getString(oauth2, "super_client_secret"),
+		Issuer:                 issuer,
+		AuthorizationCodeTTL:   authCodeTTL,
+		AccessTokenTTL:         accessTokenTTL,
+		RefreshTokenTTL:        refreshTokenTTL,
+		SuperClientID:          getString(oauth2, "super_client_id"),
+		SuperClientSecret:      getString(oauth2, "super_client_secret"),
 		SuperClientExtraScopes: getStringSlice(oauth2, "super_client_extra_scopes"),
-		PublicClientID:        getString(oauth2, "public_client_id"),
-		PublicRedirectURIs:    publicRedirectURIs,
+		PublicClientID:         getString(oauth2, "public_client_id"),
+		PublicRedirectURIs:     publicRedirectURIs,
 	}
 }
 
@@ -571,4 +612,39 @@ func getStringSlice(m map[string]interface{}, key string) []string {
 	default:
 		return nil
 	}
+}
+
+func collectDefaultWebAuthnOrigins(config map[string]interface{}) []string {
+	candidates := []string{
+		getString(getMap(config, "frontend"), "url"),
+		getString(getMap(config, "callback"), "url"),
+	}
+	seen := map[string]struct{}{}
+	origins := make([]string, 0, len(candidates))
+	for _, candidate := range candidates {
+		candidate = strings.TrimRight(strings.TrimSpace(candidate), "/")
+		if candidate == "" {
+			continue
+		}
+		if _, exists := seen[candidate]; exists {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		origins = append(origins, candidate)
+	}
+	return origins
+}
+
+func deriveWebAuthnRPID(origins []string) string {
+	for _, origin := range origins {
+		parsed, err := url.Parse(origin)
+		if err != nil {
+			continue
+		}
+		host := parsed.Hostname()
+		if host != "" {
+			return host
+		}
+	}
+	return ""
 }

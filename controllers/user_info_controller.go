@@ -78,14 +78,22 @@ func (uc *UserInfoController) GetUser(c *gin.Context) {
 		return
 	}
 	user := *authResult.User
+	webauthnCount, err := services.NewWebAuthnService().CountCredentials(user.UUID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to inspect WebAuthn credentials")
+		return
+	}
 
 	userData := gin.H{
-		"uid":      user.UID,
-		"email":    user.Email,
-		"username": user.Username,
-		"avatar":   user.Avatar,
-		"verified": user.Verified,
-		"mbe":      user.MBE,
+		"uid":                  user.UID,
+		"email":                user.Email,
+		"username":             user.Username,
+		"avatar":               user.Avatar,
+		"verified":             user.Verified,
+		"mbe":                  user.MBE,
+		"totp_enabled":         user.TwoFA && user.TOTP != "",
+		"webauthn_2fa_enabled": user.WebAuthn2FAEnabled,
+		"webauthn_credentials": webauthnCount,
 	}
 	if user.MojangUUID != nil {
 		userData["mojang_uuid"] = *user.MojangUUID

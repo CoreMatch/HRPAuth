@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -12,7 +11,6 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	appredis "github.com/lnb/HRPAuth-Backend-Go/redis"
-	"github.com/lnb/HRPAuth-Backend-Go/services"
 	"github.com/lnb/HRPAuth-Backend-Go/utils"
 )
 
@@ -137,26 +135,7 @@ func (tc *TOTPController) VerifyTOTP(c *gin.Context) {
 		return
 	}
 
-	accessToken, refreshToken, err := services.NewOAuth2Service().IssueFirstPartyUserTokens(user.UUID)
-	if err != nil {
-		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to issue OAuth2 token")
-		return
-	}
-
-	scope := ""
-	if accessToken != nil {
-		var scopes []string
-		_ = json.Unmarshal([]byte(accessToken.Scopes), &scopes)
-		scope = strings.Join(scopes, " ")
-	}
-
-	respondOK(c, "TOTP verified successfully", gin.H{
-		"access_token":  accessToken.AccessToken,
-		"refresh_token": refreshToken.RefreshToken,
-		"token_type":    "Bearer",
-		"expires_in":    config.AppConfig.OAuth2.AccessTokenTTL,
-		"scope":         scope,
-	})
+	issueAndRespondFirstPartyUserTokens(c, user.UUID, "TOTP verified successfully", nil)
 }
 
 type Toggle2FARequest struct {

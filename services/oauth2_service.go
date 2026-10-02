@@ -498,6 +498,8 @@ func publicSiteScopes() []string {
 	return []string{
 		"user.read",
 		"user.mojang-bind-enable",
+		"user.delete",
+		"user.delete.list",
 		"profile.change-username",
 		"profile.change-name",
 		"texture.upload",
@@ -505,6 +507,10 @@ func publicSiteScopes() []string {
 		"texture.get",
 		"totp.setup",
 		"totp.status",
+		"totp.toggle",
+		"webauthn.register",
+		"webauthn.credentials",
+		"webauthn.2fa",
 	}
 }
 
@@ -520,6 +526,9 @@ func targetedServiceScopes() []string {
 	return []string{
 		"user.read.as-service",
 		"user.mojang-bind-enable.as-service",
+		"user.mojang-bind-disable.as-service",
+		"user.delete.as-service",
+		"user.delete.list.as-service",
 		"profile.change-username.as-service",
 		"profile.change-name.as-service",
 		"texture.upload.as-service",
@@ -527,6 +536,10 @@ func targetedServiceScopes() []string {
 		"texture.get.as-service",
 		"totp.setup.as-service",
 		"totp.status.as-service",
+		"totp.toggle.as-service",
+		"webauthn.register.as-service",
+		"webauthn.credentials.as-service",
+		"webauthn.2fa.as-service",
 	}
 }
 

@@ -5,21 +5,22 @@ import (
 )
 
 type User struct {
-	UID        uint       `gorm:"primaryKey;column:uid"`
-	UUID       string     `gorm:"type:varchar(32);column:uuid;index:idx_uuid"`
-	Email      string     `gorm:"type:varchar(255);column:email"`
-	Avatar     string     `gorm:"type:varchar(255);column:avatar"`
-	Password   string     `gorm:"type:varchar(255);not null;column:password"`
-	IP         string     `gorm:"type:varchar(255);column:ip"`
-	Permission int        `gorm:"default:0;column:permission"`
-	LastSignAt *time.Time `gorm:"column:last_sign_at"`
-	RegisterAt *time.Time `gorm:"column:register_at"`
-	Verified   bool       `gorm:"type:tinyint(1);default:0;column:verified"`
-	Username   string     `gorm:"type:varchar(255);column:username"`
-	RegIP      string     `gorm:"type:varchar(40);column:regip"`
-	TOTP       string     `gorm:"type:varchar(32);column:totp"`
-	TwoFA      bool       `gorm:"type:tinyint(1);not null;default:0;column:2FA"`
-	CBH        bool       `gorm:"type:tinyint(1);not null;default:1;column:cbh"`
+	UID                uint       `gorm:"primaryKey;column:uid"`
+	UUID               string     `gorm:"type:varchar(32);column:uuid;index:idx_uuid"`
+	Email              string     `gorm:"type:varchar(255);column:email"`
+	Avatar             string     `gorm:"type:varchar(255);column:avatar"`
+	Password           string     `gorm:"type:varchar(255);not null;column:password"`
+	IP                 string     `gorm:"type:varchar(255);column:ip"`
+	Permission         int        `gorm:"default:0;column:permission"`
+	LastSignAt         *time.Time `gorm:"column:last_sign_at"`
+	RegisterAt         *time.Time `gorm:"column:register_at"`
+	Verified           bool       `gorm:"type:tinyint(1);default:0;column:verified"`
+	Username           string     `gorm:"type:varchar(255);column:username"`
+	RegIP              string     `gorm:"type:varchar(40);column:regip"`
+	TOTP               string     `gorm:"type:varchar(32);column:totp"`
+	TwoFA              bool       `gorm:"type:tinyint(1);not null;default:0;column:2FA"`
+	WebAuthn2FAEnabled bool       `gorm:"type:tinyint(1);not null;default:0;column:webauthn_2fa_enabled"`
+	CBH                bool       `gorm:"type:tinyint(1);not null;default:1;column:cbh"`
 	// MBE (Mojang Bind Enabled): when 1, an unbound WebUI user accepts a
 	// M.T. /register bind that supplies a mojang_uuid (see Register §3.4 2.a).
 	// When 0 (default), colliding Mojang players get 409 (HA priority).
@@ -177,6 +178,22 @@ type ProfileKey struct {
 
 func (ProfileKey) TableName() string {
 	return "profile_keys"
+}
+
+type WebAuthnCredential struct {
+	ID               uint       `gorm:"primaryKey;autoIncrement;column:id"`
+	UserID           string     `gorm:"type:varchar(32);column:user_id;index:idx_webauthn_credentials_user_id"`
+	Name             string     `gorm:"type:varchar(255);column:name"`
+	CredentialID     string     `gorm:"type:varchar(1024);column:credential_id"`
+	CredentialIDHash string     `gorm:"type:char(64);column:credential_id_hash;uniqueIndex:uk_webauthn_credentials_credential_id_hash"`
+	CredentialJSON   string     `gorm:"type:mediumtext;column:credential_json"`
+	LastUsedAt       *time.Time `gorm:"column:last_used_at"`
+	CreatedAt        time.Time  `gorm:"column:created_at"`
+	UpdatedAt        time.Time  `gorm:"column:updated_at"`
+}
+
+func (WebAuthnCredential) TableName() string {
+	return "webauthn_credentials"
 }
 
 type DeletedAccount struct {

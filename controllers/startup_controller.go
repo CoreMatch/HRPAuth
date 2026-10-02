@@ -11,6 +11,7 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/golang-migrate/migrate/v4"
@@ -109,6 +110,15 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 			"rate_limit_window_sec":   600,
 			"enable_captcha":          true,
 			"captcha_ttl":             300,
+		},
+		"webauthn": map[string]interface{}{
+			"rp_display_name": "HRPAuth",
+			"rp_id":           "auth.mcnb.dev",
+			"rp_origins": []string{
+				strings.TrimRight(frontendURL, "/"),
+				"https://ha.mcnb.dev",
+			},
+			"session_ttl_sec": 300,
 		},
 		"oauth2": map[string]interface{}{
 			"issuer":                     "https://ha.mcnb.dev/",
