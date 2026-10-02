@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -32,8 +33,9 @@ func presenceIndexKey(prefix string) string {
 }
 
 // PresenceScope 是微服务声明的作用区域。
-// Name 为作用区域名；FrontendAreas 列出该区域覆盖的前端区域/页面，
-// 非空即表示该微服务的作用区域包含前端。
+// Name 为作用区域名；FrontendAreas 列出该服务覆盖的前端挂载区域，
+// 非空即表示该微服务对前端可见。这里的前端区域是单个 WebUI 宿主内部的挂载点，
+// 不是多个独立 WebUI 或多个独立 SDK 宿主。
 type PresenceScope struct {
 	Name          string   `json:"name"`
 	FrontendAreas []string `json:"frontend_areas"`
@@ -58,9 +60,10 @@ type PresenceRecord struct {
 
 // ServiceSummary 是前端可见的微服务概要。
 type ServiceSummary struct {
-	Name      string `json:"name"`
-	ScopeName string `json:"scope_name"`
-	SDKURL    string `json:"sdk_url,omitempty"`
+	Name          string   `json:"name"`
+	ScopeName     string   `json:"scope_name"`
+	FrontendAreas []string `json:"frontend_areas,omitempty"`
+	SDKURL        string   `json:"sdk_url,omitempty"`
 }
 
 // PresenceRegistry 进程内维护所有已注册微服务的存在状态。
@@ -219,11 +222,10 @@ func (r *PresenceRegistry) evict(name string) {
 	_ = redisClient.Client.SRem(ctx, presenceIndexKey(prefix), name).Err()
 }
 
-// FrontendServices 返回与指定前端相关的微服务概要列表。
-// frontendName 为前端在 presence 中注册的微服务名；按前端区域匹配：
-// 前端自身声明的 scope.frontend_areas 作为其前端区域集合，
-// 返回所有 scope.frontend_areas 与该集合有交集的微服务。
-func (r *PresenceRegistry) FrontendServices(frontendName string) ([]ServiceSummary, bool) {
+// FrontendSDKs 返回当前所有对前端可见且声明了 sdk_url 的微服务概要列表。
+// 前端实例本身不需要再注册 presence；它只需通过该列表了解当前有哪些前端 SDK
+// 可供加载，并结合 frontend_areas 决定挂载位置。
+func (r *PresenceRegistry) FrontendSDKs() []ServiceSummary {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -239,44 +241,24 @@ func (r *PresenceRegistry) FrontendServices(frontendName string) ([]ServiceSumma
 		r.evict(name)
 	}
 
-	frontend, exists := r.records[frontendName]
-	if !exists {
-		return nil, false
-	}
-	if frontend.Scope == nil || len(frontend.Scope.FrontendAreas) == 0 {
-		// 该服务已注册，但未声明任何前端区域，不视为前端。
-		return nil, false
-	}
-
-	frontendAreas := make(map[string]struct{}, len(frontend.Scope.FrontendAreas))
-	for _, area := range frontend.Scope.FrontendAreas {
-		frontendAreas[area] = struct{}{}
-	}
-
 	services := make([]ServiceSummary, 0, len(r.records))
-	for name, record := range r.records {
-		if name == frontendName || record.Scope == nil || len(record.Scope.FrontendAreas) == 0 {
+	for _, record := range r.records {
+		if record.Scope == nil || len(record.Scope.FrontendAreas) == 0 || strings.TrimSpace(record.SDKURL) == "" {
 			continue
 		}
-		if overlaps(frontendAreas, record.Scope.FrontendAreas) {
-			services = append(services, ServiceSummary{
-				Name:      record.Name,
-				ScopeName: record.Scope.Name,
-				SDKURL:    record.SDKURL,
-			})
-		}
+		services = append(services, ServiceSummary{
+			Name:          record.Name,
+			ScopeName:     record.Scope.Name,
+			FrontendAreas: append([]string(nil), record.Scope.FrontendAreas...),
+			SDKURL:        record.SDKURL,
+		})
 	}
-	return services, true
-}
 
-// overlaps 判断两个前端区域集合是否有交集。
-func overlaps(areas map[string]struct{}, other []string) bool {
-	for _, area := range other {
-		if _, ok := areas[area]; ok {
-			return true
-		}
-	}
-	return false
+	sort.Slice(services, func(i, j int) bool {
+		return services[i].Name < services[j].Name
+	})
+
+	return services
 }
 
 type PresenceController struct {
@@ -326,22 +308,12 @@ func (pc *PresenceController) Bonjour(c *gin.Context) {
 	})
 }
 
-// ListFrontendServices 供前端 SPA 拉取与自身相关的微服务列表。
-// 公开接口，无需鉴权；但要求调用方（前端）已通过 /services/presence
-// 注册自己，并通过 ?name= 携带自己的微服务名。后端按前端区域匹配：
-// 只返回 scope.frontend_areas 与前端声明区域有交集的微服务。
+// ListFrontendServices 供前端实例拉取当前存在的前端 SDK 列表。
+// 公开接口，无需鉴权，也不要求前端先通过 /services/presence 注册自己。
+// 后端把前端视为一个特殊的微服务 SDK 消费端：只返回声明了 frontend_areas
+// 且带有 sdk_url 的微服务，并把 frontend_areas 一并返回给前端自行决定挂载。
 func (pc *PresenceController) ListFrontendServices(c *gin.Context) {
-	name := strings.TrimSpace(c.Query("name"))
-	if name == "" {
-		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "query param \"name\" is required")
-		return
-	}
-
-	services, ok := pc.registry.FrontendServices(name)
-	if !ok {
-		respondError(c, http.StatusBadRequest, CodeServiceNotRegistered, "frontend service not registered or not declared as frontend")
-		return
-	}
+	services := pc.registry.FrontendSDKs()
 
 	// 将微服务的内网 sdk_url 转换为主服务公网的 relay 路径，避免向浏览器泄露内部地址。
 	base := strings.TrimRight(config.AppConfig.Callback.URL, "/")
