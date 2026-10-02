@@ -83,7 +83,7 @@ func (u *webAuthnIdentity) WebAuthnCredentials() []wa.Credential {
 }
 
 func (ws *WebAuthnService) BeginRegistration(user *models.User, credentialName string, attachment string) (*protocol.CredentialCreation, string, error) {
-	identity, err := ws.loadIdentityByUUID(user.UUID)
+        identity, err := ws.loadIdentityByUUIDAllowEmpty(user.UUID)
 	if err != nil {
 		return nil, "", err
 	}
@@ -400,6 +400,14 @@ func (ws *WebAuthnService) loadIdentityByEmail(email string) (*webAuthnIdentity,
 }
 
 func (ws *WebAuthnService) loadIdentityByUUID(userUUID string) (*webAuthnIdentity, error) {
+        return ws.loadIdentityByUUIDWithCredentialRequirement(userUUID, true)
+}
+
+func (ws *WebAuthnService) loadIdentityByUUIDAllowEmpty(userUUID string) (*webAuthnIdentity, error) {
+        return ws.loadIdentityByUUIDWithCredentialRequirement(userUUID, false)
+}
+
+func (ws *WebAuthnService) loadIdentityByUUIDWithCredentialRequirement(userUUID string, requireCredentials bool) (*webAuthnIdentity, error) {
 	var user models.User
 	if err := database.DB.Where("uuid = ?", userUUID).First(&user).Error; err != nil {
 		return nil, err
@@ -409,7 +417,7 @@ func (ws *WebAuthnService) loadIdentityByUUID(userUUID string) (*webAuthnIdentit
 	if err != nil {
 		return nil, err
 	}
-	if len(rows) == 0 {
+        if requireCredentials && len(rows) == 0 {
 		return nil, ErrWebAuthnNotConfigured
 	}
 
