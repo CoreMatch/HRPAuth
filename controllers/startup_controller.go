@@ -404,6 +404,10 @@ func (sc *StartupController) EnsureMigrations() error {
 	}()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		var dirtyErr migrate.ErrDirty
+		if errors.As(err, &dirtyErr) {
+			return fmt.Errorf("failed to run migrations: database is dirty at version %d; fix the migration state and force version before restarting", dirtyErr.Version)
+		}
 		return fmt.Errorf("failed to run migrations: %v", err)
 	}
 

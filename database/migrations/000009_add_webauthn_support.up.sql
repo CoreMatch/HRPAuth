@@ -1,9 +1,9 @@
 ALTER TABLE `users`
-ADD COLUMN `webauthn_2fa_enabled` tinyint(1) NOT NULL DEFAULT 0;
+ADD COLUMN IF NOT EXISTS `webauthn_2fa_enabled` tinyint(1) NOT NULL DEFAULT 0;
 
 CREATE TABLE IF NOT EXISTS `webauthn_credentials` (
   `id` bigint unsigned NOT NULL AUTO_INCREMENT,
-  `user_id` varchar(32) NOT NULL,
+  `user_id` varchar(32) COLLATE utf8mb4_unicode_ci NOT NULL,
   `name` varchar(255) NOT NULL,
   `credential_id` varchar(1024) NOT NULL,
   `credential_id_hash` char(64) NOT NULL,
@@ -16,4 +16,4 @@ CREATE TABLE IF NOT EXISTS `webauthn_credentials` (
   KEY `idx_webauthn_credentials_user_id` (`user_id`),
   CONSTRAINT `fk_webauthn_credentials_user_id`
     FOREIGN KEY (`user_id`) REFERENCES `users` (`uuid`) ON DELETE CASCADE
-);
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
