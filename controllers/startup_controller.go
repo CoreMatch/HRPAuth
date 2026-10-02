@@ -376,8 +376,8 @@ func (sc *StartupController) EnsureMigrations() error {
 	}
 	defer db.Close()
 
-	if err := sc.ensureSchemaMigrationTable(db); err != nil {
-		return err
+	if bootstrapErr := sc.ensureSchemaMigrationTable(db); bootstrapErr != nil {
+		return bootstrapErr
 	}
 
 	driver, err := mysqldriver.WithInstance(db, &mysqldriver.Config{
