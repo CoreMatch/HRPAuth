@@ -1,11 +1,14 @@
 package controllers
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
@@ -42,6 +45,33 @@ type WebAuthnToggle2FARequest struct {
 	Enabled bool `json:"enabled"`
 }
 
+// #region debug-point B:report-helper
+func reportWebAuthnControllerDebug(hypothesisID string, location string, msg string, data map[string]any) {
+	payload, err := json.Marshal(map[string]any{
+		"sessionId":    "webauthn-bind-flow",
+		"runId":        "pre-fix",
+		"hypothesisId": hypothesisID,
+		"location":     location,
+		"msg":          "[DEBUG] " + msg,
+		"data":         data,
+		"ts":           time.Now().UnixMilli(),
+	})
+	if err != nil {
+		return
+	}
+
+	go func(body []byte) {
+		req, reqErr := http.NewRequest(http.MethodPost, "http://127.0.0.1:7777/event", bytes.NewReader(body))
+		if reqErr != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		_, _ = http.DefaultClient.Do(req)
+	}(payload)
+}
+
+// #endregion
+
 func NewWebAuthnController() *WebAuthnController {
 	return &WebAuthnController{
 		service: services.NewWebAuthnService(),
@@ -51,22 +81,61 @@ func NewWebAuthnController() *WebAuthnController {
 func (wc *WebAuthnController) BeginRegistration(c *gin.Context) {
 	authResult, ok := resolveSiteBearerAuth(c, "webauthn.register", "webauthn.register.as-service", false, "", "")
 	if !ok {
+		// #region debug-point B:begin-registration-auth-failed
+		reportWebAuthnControllerDebug("B", "controllers/webauthn_controller.go:BeginRegistration:auth", "BeginRegistration failed during auth resolution", map[string]any{
+			"hasAuthorization": c.GetHeader("Authorization") != "",
+			"origin":           c.GetHeader("Origin"),
+			"contentType":      c.ContentType(),
+		})
+		// #endregion
 		return
 	}
 
 	var req WebAuthnRegistrationBeginRequest
 	if c.Request.ContentLength > 0 {
 		if err := c.ShouldBindJSON(&req); err != nil {
+			// #region debug-point B:begin-registration-bind-failed
+			reportWebAuthnControllerDebug("B", "controllers/webauthn_controller.go:BeginRegistration:bind", "BeginRegistration request body could not be parsed", map[string]any{
+				"contentLength": c.Request.ContentLength,
+				"contentType":   c.ContentType(),
+				"error":         err.Error(),
+			})
+			// #endregion
 			respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
 			return
 		}
 	}
 
+	// #region debug-point B:begin-registration-request
+	reportWebAuthnControllerDebug("B", "controllers/webauthn_controller.go:BeginRegistration:request", "BeginRegistration request accepted by controller", map[string]any{
+		"userUUID":         authResult.User.UUID,
+		"hasAuthorization": c.GetHeader("Authorization") != "",
+		"origin":           c.GetHeader("Origin"),
+		"contentType":      c.ContentType(),
+		"nameLength":       len(req.Name),
+		"attachment":       req.Attachment,
+	})
+	// #endregion
+
 	options, flowID, err := wc.service.BeginRegistration(authResult.User, req.Name, req.Attachment)
 	if err != nil {
+		// #region debug-point B:begin-registration-service-failed
+		reportWebAuthnControllerDebug("B", "controllers/webauthn_controller.go:BeginRegistration:service", "BeginRegistration returned an error from service layer", map[string]any{
+			"userUUID": authResult.User.UUID,
+			"error":    err.Error(),
+		})
+		// #endregion
 		wc.respondWebAuthnError(c, err)
 		return
 	}
+
+	// #region debug-point C:begin-registration-response
+	reportWebAuthnControllerDebug("C", "controllers/webauthn_controller.go:BeginRegistration:response", "BeginRegistration returned success response", map[string]any{
+		"userUUID":     authResult.User.UUID,
+		"flowIDLength": len(flowID),
+		"hasOptions":   options != nil,
+	})
+	// #endregion
 
 	respondOK(c, "WebAuthn registration started", gin.H{
 		"flow_id": flowID,
@@ -77,24 +146,32 @@ func (wc *WebAuthnController) BeginRegistration(c *gin.Context) {
 func (wc *WebAuthnController) FinishRegistration(c *gin.Context) {
 	authResult, ok := resolveSiteBearerAuth(c, "webauthn.register", "webauthn.register.as-service", false, "", "")
 	if !ok {
+		log.Printf("info: WebAuthn finish registration auth failed origin=%q has_authorization=%t", c.GetHeader("Origin"), c.GetHeader("Authorization") != "")
 		return
 	}
 
 	var req WebAuthnFinishRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("info: WebAuthn finish registration invalid JSON user_uuid=%s origin=%q content_type=%q err=%v", authResult.User.UUID, c.GetHeader("Origin"), c.ContentType(), err)
 		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
 		return
 	}
 	if req.FlowID == "" || len(req.Credential) == 0 {
+		log.Printf("info: WebAuthn finish registration missing fields user_uuid=%s flow_id_len=%d credential_len=%d", authResult.User.UUID, len(req.FlowID), len(req.Credential))
 		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing flow_id or credential")
 		return
 	}
 
+	log.Printf("info: WebAuthn finish registration request user_uuid=%s flow_id_len=%d credential_len=%d origin=%q", authResult.User.UUID, len(req.FlowID), len(req.Credential), c.GetHeader("Origin"))
+
 	credential, err := wc.service.FinishRegistration(req.FlowID, authResult.User.UUID, req.Credential)
 	if err != nil {
+		log.Printf("warning: WebAuthn finish registration failed user_uuid=%s flow_id_len=%d err=%v", authResult.User.UUID, len(req.FlowID), err)
 		wc.respondWebAuthnError(c, err)
 		return
 	}
+
+	log.Printf("info: WebAuthn finish registration succeeded user_uuid=%s credential_id=%d", authResult.User.UUID, credential.ID)
 
 	respondCreated(c, "WebAuthn credential registered", gin.H{
 		"credential": gin.H{
@@ -118,6 +195,13 @@ func (wc *WebAuthnController) ListCredentials(c *gin.Context) {
 		return
 	}
 
+	available := true
+	availabilityError := ""
+	if err := wc.service.AvailabilityError(); err != nil {
+		available = false
+		availabilityError = err.Error()
+	}
+
 	credentials := make([]gin.H, 0, len(rows))
 	for _, row := range rows {
 		credentials = append(credentials, gin.H{
@@ -129,8 +213,10 @@ func (wc *WebAuthnController) ListCredentials(c *gin.Context) {
 	}
 
 	respondOK(c, "WebAuthn credentials loaded", gin.H{
-		"credentials": credentials,
-		"count":       len(credentials),
+		"credentials":        credentials,
+		"count":              len(credentials),
+		"available":          available,
+		"availability_error": availabilityError,
 	})
 }
 

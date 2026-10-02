@@ -1,6 +1,7 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
@@ -8,6 +9,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -56,6 +59,69 @@ type webAuthnFlow struct {
 	SessionData    wa.SessionData `json:"session_data"`
 }
 
+func summarizeWebAuthnCredentialPayload(payload []byte) map[string]any {
+	summary := map[string]any{
+		"payload_len": len(payload),
+	}
+	if len(payload) == 0 {
+		return summary
+	}
+
+	var raw map[string]any
+	if err := json.Unmarshal(payload, &raw); err != nil {
+		summary["json_error"] = err.Error()
+		return summary
+	}
+
+	summary["top_level_keys"] = len(raw)
+	summary["id_present"] = raw["id"] != nil
+	summary["raw_id_present"] = raw["rawId"] != nil
+	summary["type"] = raw["type"]
+	summary["authenticator_attachment"] = raw["authenticatorAttachment"]
+	summary["client_extension_results_present"] = raw["clientExtensionResults"] != nil
+
+	response, _ := raw["response"].(map[string]any)
+	summary["response_present"] = response != nil
+	if response == nil {
+		return summary
+	}
+
+	summary["client_data_present"] = response["clientDataJSON"] != nil
+	summary["attestation_object_present"] = response["attestationObject"] != nil
+	summary["authenticator_data_present"] = response["authenticatorData"] != nil
+	summary["public_key_present"] = response["publicKey"] != nil
+	summary["public_key_algorithm_present"] = response["publicKeyAlgorithm"] != nil
+	summary["transports_present"] = response["transports"] != nil
+	return summary
+}
+
+// #region debug-point A:report-helper
+func reportWebAuthnDebug(hypothesisID string, location string, msg string, data map[string]any) {
+	payload, err := json.Marshal(map[string]any{
+		"sessionId":    "webauthn-bind-flow",
+		"runId":        "pre-fix",
+		"hypothesisId": hypothesisID,
+		"location":     location,
+		"msg":          "[DEBUG] " + msg,
+		"data":         data,
+		"ts":           time.Now().UnixMilli(),
+	})
+	if err != nil {
+		return
+	}
+
+	go func(body []byte) {
+		req, reqErr := http.NewRequest(http.MethodPost, "http://127.0.0.1:7777/event", bytes.NewReader(body))
+		if reqErr != nil {
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		_, _ = http.DefaultClient.Do(req)
+	}(payload)
+}
+
+// #endregion
+
 func NewWebAuthnService() *WebAuthnService {
 	return &WebAuthnService{}
 }
@@ -83,13 +149,32 @@ func (u *webAuthnIdentity) WebAuthnCredentials() []wa.Credential {
 }
 
 func (ws *WebAuthnService) BeginRegistration(user *models.User, credentialName string, attachment string) (*protocol.CredentialCreation, string, error) {
-        identity, err := ws.loadIdentityByUUIDAllowEmpty(user.UUID)
+	identity, err := ws.loadIdentityByUUIDAllowEmpty(user.UUID)
 	if err != nil {
+		// #region debug-point C:begin-registration-identity-error
+		reportWebAuthnDebug("C", "services/webauthn_service.go:BeginRegistration:identity", "BeginRegistration failed before instance()", map[string]any{
+			"userUUID": user.UUID,
+			"error":    err.Error(),
+		})
+		// #endregion
 		return nil, "", err
 	}
 
 	instance, err := ws.instance()
 	if err != nil {
+		// #region debug-point A:begin-registration-instance-error
+		reportWebAuthnDebug("A", "services/webauthn_service.go:BeginRegistration:instance", "BeginRegistration could not get WebAuthn instance", map[string]any{
+			"userUUID":        user.UUID,
+			"credentialCount": len(identity.credentials),
+			"credentialName":  strings.TrimSpace(credentialName),
+			"attachment":      strings.TrimSpace(attachment),
+			"instanceError":   err.Error(),
+			"rpID":            config.AppConfig.WebAuthn.RPID,
+			"rpOrigins":       config.AppConfig.WebAuthn.RPOrigins,
+			"rpDisplayName":   config.AppConfig.WebAuthn.RPDisplayName,
+			"sessionTTL":      config.AppConfig.WebAuthn.SessionTTL,
+		})
+		// #endregion
 		return nil, "", err
 	}
 
@@ -100,9 +185,9 @@ func (ws *WebAuthnService) BeginRegistration(user *models.User, credentialName s
 	}
 
 	if attachment != "" {
-		parsedAttachment, err := parseAuthenticatorAttachment(attachment)
-		if err != nil {
-			return nil, "", err
+		parsedAttachment, parseErr := parseAuthenticatorAttachment(attachment)
+		if parseErr != nil {
+			return nil, "", parseErr
 		}
 		selection.AuthenticatorAttachment = parsedAttachment
 	}
@@ -113,6 +198,15 @@ func (ws *WebAuthnService) BeginRegistration(user *models.User, credentialName s
 		wa.WithExtensions(protocol.AuthenticationExtensions{"credProps": true}),
 	)
 	if err != nil {
+		// #region debug-point C:begin-registration-create-error
+		reportWebAuthnDebug("C", "services/webauthn_service.go:BeginRegistration:create", "BeginRegistration failed during ceremony creation", map[string]any{
+			"userUUID":        user.UUID,
+			"credentialCount": len(identity.credentials),
+			"credentialName":  strings.TrimSpace(credentialName),
+			"attachment":      strings.TrimSpace(attachment),
+			"error":           err.Error(),
+		})
+		// #endregion
 		return nil, "", err
 	}
 
@@ -126,47 +220,72 @@ func (ws *WebAuthnService) BeginRegistration(user *models.User, credentialName s
 		return nil, "", err
 	}
 
+	// #region debug-point C:begin-registration-success
+	reportWebAuthnDebug("C", "services/webauthn_service.go:BeginRegistration:success", "BeginRegistration produced WebAuthn options", map[string]any{
+		"userUUID":           user.UUID,
+		"credentialCount":    len(identity.credentials),
+		"flowIDLength":       len(flowID),
+		"hasPublicKey":       creation != nil,
+		"rpID":               config.AppConfig.WebAuthn.RPID,
+		"rpOrigins":          config.AppConfig.WebAuthn.RPOrigins,
+		"userVerification":   selection.UserVerification,
+		"residentKey":        selection.ResidentKey,
+		"requireResidentKey": selection.RequireResidentKey,
+		"sessionExpiresAt":   session.Expires.Format(time.RFC3339),
+	})
+	// #endregion
+
 	return creation, flowID, nil
 }
 
 func (ws *WebAuthnService) FinishRegistration(flowID string, expectedUserID string, payload []byte) (*models.WebAuthnCredential, error) {
 	flow, err := ws.getFlow(flowID)
 	if err != nil {
+		log.Printf("warning: WebAuthn finish registration failed to load flow flow_id_len=%d expected_user_uuid=%s err=%v", len(flowID), expectedUserID, err)
 		return nil, err
 	}
 	if flow.Type != webAuthnFlowTypeRegister || flow.UserID == "" {
+		log.Printf("warning: WebAuthn finish registration invalid flow type flow_id_len=%d flow_type=%q flow_user_uuid=%q expected_user_uuid=%q", len(flowID), flow.Type, flow.UserID, expectedUserID)
 		return nil, ErrWebAuthnInvalidFlow
 	}
 	if strings.TrimSpace(expectedUserID) == "" || flow.UserID != expectedUserID {
+		log.Printf("warning: WebAuthn finish registration user mismatch flow_id_len=%d flow_user_uuid=%q expected_user_uuid=%q", len(flowID), flow.UserID, expectedUserID)
 		return nil, ErrWebAuthnInvalidFlow
 	}
 
-	identity, err := ws.loadIdentityByUUID(flow.UserID)
+	// Registration completion must work for a user's first credential.
+	identity, err := ws.loadIdentityByUUIDAllowEmpty(flow.UserID)
 	if err != nil {
+		log.Printf("warning: WebAuthn finish registration failed to load identity flow_id_len=%d user_uuid=%s err=%v", len(flowID), flow.UserID, err)
 		return nil, err
 	}
 
 	instance, err := ws.instance()
 	if err != nil {
+		log.Printf("warning: WebAuthn finish registration instance unavailable flow_id_len=%d user_uuid=%s err=%v", len(flowID), flow.UserID, err)
 		return nil, err
 	}
 
 	parsed, err := protocol.ParseCredentialCreationResponseBytes(payload)
 	if err != nil {
+		log.Printf("warning: WebAuthn finish registration parse failed flow_id_len=%d user_uuid=%s summary=%v err=%v", len(flowID), flow.UserID, summarizeWebAuthnCredentialPayload(payload), err)
 		return nil, err
 	}
 
 	credential, err := instance.CreateCredential(identity, flow.SessionData, parsed)
 	if err != nil {
+		log.Printf("warning: WebAuthn finish registration verification failed flow_id_len=%d user_uuid=%s challenge=%q rp_id=%q rp_origins=%v parsed_attachment=%q summary=%v err=%v", len(flowID), flow.UserID, flow.SessionData.Challenge, config.AppConfig.WebAuthn.RPID, config.AppConfig.WebAuthn.RPOrigins, parsed.AuthenticatorAttachment, summarizeWebAuthnCredentialPayload(payload), err)
 		return nil, err
 	}
 
 	row, err := ws.insertCredential(flow.UserID, flow.CredentialName, credential)
 	if err != nil {
+		log.Printf("warning: WebAuthn finish registration failed to store credential flow_id_len=%d user_uuid=%s credential_name=%q err=%v", len(flowID), flow.UserID, flow.CredentialName, err)
 		return nil, err
 	}
 
 	_ = ws.deleteFlow(flowID)
+	log.Printf("info: WebAuthn finish registration stored credential flow_id_len=%d user_uuid=%s credential_row_id=%d credential_name=%q", len(flowID), flow.UserID, row.ID, row.Name)
 
 	return row, nil
 }
@@ -271,7 +390,7 @@ func (ws *WebAuthnService) FinishLogin(flowID string, payload []byte) (*models.U
 			return nil, ErrWebAuthnInvalidFlow
 		}
 		key := config.AppConfig.Redis.Prefix + "oauth2:login_ticket:" + flow.LoginTicket
-		if _, err := appredis.Client.Get(context.Background(), key).Result(); err != nil {
+		if _, redisErr := appredis.Client.Get(context.Background(), key).Result(); redisErr != nil {
 			return nil, ErrWebAuthnInvalidFlow
 		}
 	}
@@ -391,6 +510,11 @@ func (ws *WebAuthnService) SetTwoFactorEnabled(userUUID string, enabled bool) er
 	return database.DB.Model(&models.User{}).Where("uuid = ?", userUUID).Update("webauthn_2fa_enabled", enabled).Error
 }
 
+func (ws *WebAuthnService) AvailabilityError() error {
+	_, err := ws.instance()
+	return err
+}
+
 func (ws *WebAuthnService) loadIdentityByEmail(email string) (*webAuthnIdentity, error) {
 	var user models.User
 	if err := database.DB.Where("email = ?", email).First(&user).Error; err != nil {
@@ -400,11 +524,11 @@ func (ws *WebAuthnService) loadIdentityByEmail(email string) (*webAuthnIdentity,
 }
 
 func (ws *WebAuthnService) loadIdentityByUUID(userUUID string) (*webAuthnIdentity, error) {
-        return ws.loadIdentityByUUIDWithCredentialRequirement(userUUID, true)
+	return ws.loadIdentityByUUIDWithCredentialRequirement(userUUID, true)
 }
 
 func (ws *WebAuthnService) loadIdentityByUUIDAllowEmpty(userUUID string) (*webAuthnIdentity, error) {
-        return ws.loadIdentityByUUIDWithCredentialRequirement(userUUID, false)
+	return ws.loadIdentityByUUIDWithCredentialRequirement(userUUID, false)
 }
 
 func (ws *WebAuthnService) loadIdentityByUUIDWithCredentialRequirement(userUUID string, requireCredentials bool) (*webAuthnIdentity, error) {
@@ -417,7 +541,7 @@ func (ws *WebAuthnService) loadIdentityByUUIDWithCredentialRequirement(userUUID 
 	if err != nil {
 		return nil, err
 	}
-        if requireCredentials && len(rows) == 0 {
+	if requireCredentials && len(rows) == 0 {
 		return nil, ErrWebAuthnNotConfigured
 	}
 
@@ -549,6 +673,14 @@ func (ws *WebAuthnService) deleteFlow(flowID string) error {
 func (ws *WebAuthnService) instance() (*wa.WebAuthn, error) {
 	webAuthnOnce.Do(func() {
 		cfg := config.AppConfig.WebAuthn
+		// #region debug-point E:instance-config
+		reportWebAuthnDebug("E", "services/webauthn_service.go:instance:config", "Initializing WebAuthn instance", map[string]any{
+			"rpDisplayName": cfg.RPDisplayName,
+			"rpID":          cfg.RPID,
+			"rpOrigins":     cfg.RPOrigins,
+			"sessionTTL":    cfg.SessionTTL,
+		})
+		// #endregion
 		webAuthnInstance, webAuthnInitErr = wa.New(&wa.Config{
 			RPDisplayName: cfg.RPDisplayName,
 			RPID:          cfg.RPID,
@@ -564,8 +696,30 @@ func (ws *WebAuthnService) instance() (*wa.WebAuthn, error) {
 				},
 			},
 		})
+		if webAuthnInitErr != nil {
+			log.Printf("warning: WebAuthn initialization failed: %v", webAuthnInitErr)
+			// #region debug-point A:instance-init-error
+			reportWebAuthnDebug("A", "services/webauthn_service.go:instance:error", "WebAuthn instance initialization failed", map[string]any{
+				"rpDisplayName": cfg.RPDisplayName,
+				"rpID":          cfg.RPID,
+				"rpOrigins":     cfg.RPOrigins,
+				"sessionTTL":    cfg.SessionTTL,
+				"error":         webAuthnInitErr.Error(),
+			})
+			// #endregion
+		} else {
+			// #region debug-point A:instance-init-success
+			reportWebAuthnDebug("A", "services/webauthn_service.go:instance:success", "WebAuthn instance initialized successfully", map[string]any{
+				"rpID":      cfg.RPID,
+				"rpOrigins": cfg.RPOrigins,
+			})
+			// #endregion
+		}
 	})
-	return webAuthnInstance, webAuthnInitErr
+	if webAuthnInitErr != nil {
+		return nil, fmt.Errorf("%w: %v", ErrWebAuthnNotConfigured, webAuthnInitErr)
+	}
+	return webAuthnInstance, nil
 }
 
 func parseAuthenticatorAttachment(value string) (protocol.AuthenticatorAttachment, error) {

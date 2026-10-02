@@ -328,7 +328,7 @@ func parseWebAuthnConfig(config map[string]interface{}) WebAuthnConfig {
 		rpDisplayName = getString(getMap(config, "site"), "name")
 	}
 
-	rpOrigins := getStringSlice(section, "rp_origins")
+	rpOrigins := normalizeWebAuthnOrigins(getStringSlice(section, "rp_origins"))
 	if len(rpOrigins) == 0 {
 		rpOrigins = collectDefaultWebAuthnOrigins(config)
 	}
@@ -619,20 +619,41 @@ func collectDefaultWebAuthnOrigins(config map[string]interface{}) []string {
 		getString(getMap(config, "frontend"), "url"),
 		getString(getMap(config, "callback"), "url"),
 	}
+	return normalizeWebAuthnOrigins(candidates)
+}
+
+func normalizeWebAuthnOrigins(origins []string) []string {
 	seen := map[string]struct{}{}
-	origins := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		candidate = strings.TrimRight(strings.TrimSpace(candidate), "/")
-		if candidate == "" {
+	normalized := make([]string, 0, len(origins))
+	for _, origin := range origins {
+		origin = normalizeWebAuthnOrigin(origin)
+		if origin == "" {
 			continue
 		}
-		if _, exists := seen[candidate]; exists {
+		if _, exists := seen[origin]; exists {
 			continue
 		}
-		seen[candidate] = struct{}{}
-		origins = append(origins, candidate)
+		seen[origin] = struct{}{}
+		normalized = append(normalized, origin)
 	}
-	return origins
+	return normalized
+}
+
+func normalizeWebAuthnOrigin(raw string) string {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return ""
+	}
+
+	parsed, err := url.Parse(raw)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return strings.TrimRight(raw, "/")
+	}
+
+	return (&url.URL{
+		Scheme: strings.ToLower(parsed.Scheme),
+		Host:   strings.ToLower(parsed.Host),
+	}).String()
 }
 
 func deriveWebAuthnRPID(origins []string) string {
