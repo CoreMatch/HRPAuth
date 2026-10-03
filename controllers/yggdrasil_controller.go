@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
@@ -75,6 +76,26 @@ func sendYggdrasilError(c *gin.Context, errType, errMessage string, statusCode i
 }
 
 func (yc *YggdrasilController) Meta(c *gin.Context) {
+	c.Header("X-Authlib-Injector-API-Location", "/")
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "online",
+		"success": true,
+		"message": "HRPAuth Backend is running.",
+		"site": gin.H{
+			"name":        config.AppConfig.Site.Name,
+			"url":         config.AppConfig.Callback.URL,
+			"version":     config.AppConfig.Site.Version,
+			"go_version":  "go1.26",
+			"server_time": time.Now().Format("2006-01-02 15:04:05"),
+		},
+		"yggdrasil": yc.GetMetadata(),
+		"meta": gin.H{
+			"request_id": c.GetString("request_id"),
+		},
+	})
+}
+
+func (yc *YggdrasilController) GetMetadata() gin.H {
 	cfg := config.AppConfig.Yggdrasil.Server
 	frontendURL := config.AppConfig.Frontend.URL
 
@@ -98,8 +119,6 @@ func (yc *YggdrasilController) Meta(c *gin.Context) {
 		}
 	}
 
-	c.Header("X-Authlib-Injector-API-Location", "/")
-
 	serverName := cfg.Name
 	if serverName == "" {
 		serverName = config.AppConfig.Site.Name
@@ -115,7 +134,7 @@ func (yc *YggdrasilController) Meta(c *gin.Context) {
 		implVersion = config.AppConfig.Site.Version
 	}
 
-	c.JSON(http.StatusOK, gin.H{
+	return gin.H{
 		"meta": gin.H{
 			"serverName":                          serverName,
 			"implementationName":                  implName,
@@ -130,7 +149,7 @@ func (yc *YggdrasilController) Meta(c *gin.Context) {
 		},
 		"skinDomains":        skinDomains,
 		"signaturePublickey": cfg.SignaturePublicKey,
-	})
+	}
 }
 
 func (yc *YggdrasilController) Authenticate(c *gin.Context) {

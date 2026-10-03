@@ -122,24 +122,7 @@ func main() {
 	}
 
 	r.GET("/status", func(c *gin.Context) {
-		controllers := gin.H{
-			"status": "online",
-			"backend": gin.H{
-				"name":        config.AppConfig.Site.Name,
-				"url":         config.AppConfig.Callback.URL,
-				"version":     config.AppConfig.Site.Version,
-				"go_version":  "go1.26",
-				"server_time": time.Now().Format("2006-01-02 15:04:05"),
-			},
-		}
-		c.JSON(http.StatusOK, gin.H{
-			"success": true,
-			"message": "HRPAuth Backend is running.",
-			"data":    controllers,
-			"meta": gin.H{
-				"request_id": c.GetString("request_id"),
-			},
-		})
+		c.Redirect(http.StatusTemporaryRedirect, "/")
 	})
 
 	api := r.Group("")
