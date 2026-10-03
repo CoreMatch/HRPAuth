@@ -63,7 +63,7 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 		},
 		"server": map[string]interface{}{
 			"port":        ":2778",
-			"cors_origin": "*",
+			"cors_origin": "",
 		},
 		"callback": map[string]interface{}{
 			"url": "https://ha.mcnb.dev/",

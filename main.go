@@ -18,7 +18,11 @@ import (
 func CORSMiddleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		origin := config.AppConfig.Server.CORSOrigin
-		if origin == "*" {
+		if origin == "" {
+			// Default to frontend URL if CORSOrigin is empty
+			origin = strings.TrimRight(config.AppConfig.Frontend.URL, "/")
+		} else if origin == "*" {
+			// Reflexive origin (unsafe, but allowed if manually configured as "*")
 			reqOrigin := c.Request.Header.Get("Origin")
 			if reqOrigin != "" {
 				origin = reqOrigin
