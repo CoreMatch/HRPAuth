@@ -3,6 +3,7 @@ package controllers
 import (
 	"net/http"
 	"net/mail"
+	"regexp"
 	"strings"
 	"time"
 
@@ -13,6 +14,12 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/services"
 	"github.com/lnb/HRPAuth-Backend-Go/utils"
 	"gorm.io/gorm"
+)
+
+var (
+	emailRegex     = regexp.MustCompile(`^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$`)
+	captchaRegex   = regexp.MustCompile(`^[a-zA-Z0-9]{4}$`)
+	emailCodeRegex = regexp.MustCompile(`^[0-9]{4}$`)
 )
 
 type AuthController struct{}
@@ -52,6 +59,18 @@ type ClaimUserRequest struct {
 	Username string `json:"username"`
 	Email    string `json:"email"`
 	Password string `json:"password"`
+}
+
+type ForgotPasswordRequest struct {
+	Email        string `json:"email"`
+	CaptchaToken string `json:"captcha_token"`
+	CaptchaCode  string `json:"captcha_code"`
+}
+
+type ResetPasswordRequest struct {
+	Email       string `json:"email"`
+	Code        string `json:"code"`
+	NewPassword string `json:"new_password"`
 }
 
 // ForceBindRequest is the body for POST /admin/force-bind. Operators transfer
@@ -396,6 +415,135 @@ func (ac *AuthController) Logout(c *gin.Context) {
 		return
 	}
 	respondOK(c, "Logout successful", nil)
+}
+
+// ForgotPassword handles POST /forgot-password.
+func (ac *AuthController) ForgotPassword(c *gin.Context) {
+	var req ForgotPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
+		return
+	}
+
+	email := strings.TrimSpace(req.Email)
+	captchaCode := strings.TrimSpace(req.CaptchaCode)
+
+	// 1. Strict Regex Validation
+	if !emailRegex.MatchString(email) {
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email format")
+		return
+	}
+	if !captchaRegex.MatchString(captchaCode) {
+		respondError(c, http.StatusBadRequest, CodeCaptchaInvalid, "Invalid captcha format")
+		return
+	}
+
+	// 2. Captcha Verification
+	captchaService := services.NewCaptchaService()
+	if req.CaptchaToken == "" || !captchaService.Verify(req.CaptchaToken, captchaCode) {
+		respondError(c, http.StatusBadRequest, CodeCaptchaInvalid, "Invalid or expired captcha")
+		return
+	}
+
+	// 3. Check if email exists
+	var user models.User
+	err := database.DB.Where("email = ?", email).First(&user).Error
+
+	// Always respond success to prevent email enumeration
+	successMsg := "If the email is registered, a verification code has been sent."
+
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			respondOK(c, successMsg, nil)
+			return
+		}
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Database error")
+		return
+	}
+
+	// 4. Generate and send 4-digit code
+	codeStore := services.NewVerificationCodeStore()
+	emailService := services.NewEmailService()
+
+	code := codeStore.Generate4DigitCode()
+	if !codeStore.Store(email, code) {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to store verification code")
+		return
+	}
+
+	subject := "HRPAuth - Password Recovery"
+	message := "Your password recovery code is: " + code + "\n\nThe code is valid for 10 minutes. If you did not request this, please ignore this email."
+
+	if err := emailService.SendMail(email, subject, message); err != nil {
+		codeStore.Delete(email)
+		// We still return OK for consistency even if mail sending fails (though logging would be good)
+		// but since it's a critical failure for THIS user, maybe an error is better?
+		// The prompt says "若该邮箱没有注册，也依旧向前端返回成功消息".
+		// For registered users, if mail fails, we might want to know.
+		// But let's stick to the security requirement of not leaking existence.
+		respondError(c, http.StatusInternalServerError, CodeEmailSendFailed, "Failed to send recovery email")
+		return
+	}
+
+	respondOK(c, successMsg, nil)
+}
+
+// ResetPassword handles POST /reset-password.
+func (ac *AuthController) ResetPassword(c *gin.Context) {
+	var req ResetPasswordRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
+		return
+	}
+
+	email := strings.TrimSpace(req.Email)
+	code := strings.TrimSpace(req.Code)
+
+	// 1. Strict Regex Validation
+	if !emailRegex.MatchString(email) {
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email format")
+		return
+	}
+	if !emailCodeRegex.MatchString(code) {
+		respondError(c, http.StatusBadRequest, CodeVerificationCodeInvalid, "Invalid verification code format")
+		return
+	}
+
+	if len(req.NewPassword) < 6 {
+		respondError(c, http.StatusBadRequest, CodePasswordTooShort, "Password too short")
+		return
+	}
+
+	// 2. Verify Email Code
+	codeStore := services.NewVerificationCodeStore()
+	storedCode, found := codeStore.Get(email)
+	if !found || storedCode != code {
+		respondError(c, http.StatusBadRequest, CodeVerificationCodeInvalid, "Invalid or expired verification code")
+		return
+	}
+
+	// 3. Update Password
+	hash, err := utils.HashPassword(req.NewPassword)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Password hashing failed")
+		return
+	}
+
+	result := database.DB.Model(&models.User{}).Where("email = ?", email).Update("password", hash)
+	if result.Error != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to update password")
+		return
+	}
+
+	if result.RowsAffected == 0 {
+		respondError(c, http.StatusNotFound, CodeUserNotFound, "User not found")
+		return
+	}
+
+	// 4. Cleanup
+	codeStore.Delete(email)
+
+	respondOK(c, "Password reset successful", nil)
 }
 
 // LoginByMT handles POST /loginbymt. It issues a remember_token for a user

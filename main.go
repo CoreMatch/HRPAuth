@@ -149,6 +149,8 @@ func main() {
 		api.POST("/login", authCtrl.Login)
 		api.POST("/loginbymt", authCtrl.LoginByMT)
 		api.POST("/register", authCtrl.Register)
+		api.POST("/forgot-password", authCtrl.ForgotPassword)
+		api.POST("/reset-password", authCtrl.ResetPassword)
 		api.GET("/logout", authCtrl.Logout)
 		api.POST("/admin/claim-user", authCtrl.ClaimUser)
 		api.POST("/admin/force-bind", authCtrl.ForceBind)

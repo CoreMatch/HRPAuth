@@ -170,6 +170,11 @@ func (vcs *VerificationCodeStore) GenerateCode() string {
 	return fmt.Sprintf("%06d", n.Int64())
 }
 
+func (vcs *VerificationCodeStore) Generate4DigitCode() string {
+	n, _ := rand.Int(rand.Reader, big.NewInt(10000))
+	return fmt.Sprintf("%04d", n.Int64())
+}
+
 func md5Hash(s string) string {
 	h := md5.New()
 	h.Write([]byte(s))
