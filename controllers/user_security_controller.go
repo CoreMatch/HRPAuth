@@ -2,7 +2,6 @@ package controllers
 
 import (
 	"encoding/json"
-	"errors"
 	"net/http"
 	"strings"
 	"time"
@@ -32,12 +31,10 @@ func NewUserSecurityController() *UserSecurityController {
 }
 
 type ChangeEmailRequest struct {
-	NewEmail        string `json:"new_email"`
-	CurrentPassword string `json:"current_password"`
-	NewPassword     string `json:"new_password"`
-	TOTPCode        string `json:"totp_code"`
-	EmailCode       string `json:"email_code"`
-	WebAuthn        struct {
+	NewEmail  string `json:"new_email"`
+	TOTPCode  string `json:"totp_code"`
+	EmailCode string `json:"email_code"`
+	WebAuthn  struct {
 		FlowID     string          `json:"flow_id"`
 		Credential json.RawMessage `json:"credential"`
 	} `json:"webauthn"`
@@ -130,26 +127,13 @@ func (usc *UserSecurityController) ChangeEmail(c *gin.Context) {
 	}
 
 	// Verify factors
-	factorsCount := 0
-	passwordVerified := false
+	anyFactorVerified := false
 
-	// 1. Password
-	if req.CurrentPassword != "" {
-		verifiedUser := usc.authService.VerifyCredentials(user.Email, req.CurrentPassword, false)
-		if verifiedUser != nil && verifiedUser.UUID == user.UUID {
-			factorsCount++
-			passwordVerified = true
-		} else {
-			respondError(c, http.StatusUnauthorized, CodeInvalidCredentials, "Current password incorrect")
-			return
-		}
-	}
-
-	// 2. TOTP
+	// 1. TOTP
 	if req.TOTPCode != "" {
 		if user.TwoFA && user.TOTP != "" {
 			if usc.verifyTOTP(user.TOTP, req.TOTPCode) {
-				factorsCount++
+				anyFactorVerified = true
 			} else {
 				respondError(c, http.StatusUnauthorized, CodePasscodeInvalid, "Invalid TOTP code")
 				return
@@ -160,11 +144,11 @@ func (usc *UserSecurityController) ChangeEmail(c *gin.Context) {
 		}
 	}
 
-	// 3. Email Code
+	// 2. Email Code
 	if req.EmailCode != "" {
 		storedCode, found := usc.codeStore.Get(user.Email)
 		if found && storedCode == req.EmailCode {
-			factorsCount++
+			anyFactorVerified = true
 			usc.codeStore.Delete(user.Email)
 		} else {
 			respondError(c, http.StatusUnauthorized, CodeVerificationCodeInvalid, "Invalid or expired email verification code")
@@ -172,11 +156,11 @@ func (usc *UserSecurityController) ChangeEmail(c *gin.Context) {
 		}
 	}
 
-	// 4. WebAuthn
+	// 3. WebAuthn
 	if req.WebAuthn.FlowID != "" && len(req.WebAuthn.Credential) > 0 {
 		_, err := usc.webauthnService.FinishLogin(req.WebAuthn.FlowID, req.WebAuthn.Credential)
 		if err == nil {
-			factorsCount++
+			anyFactorVerified = true
 		} else {
 			respondError(c, http.StatusUnauthorized, CodeWebAuthnVerificationFailed, "WebAuthn verification failed")
 			return
@@ -184,10 +168,8 @@ func (usc *UserSecurityController) ChangeEmail(c *gin.Context) {
 	}
 
 	// Final Check
-	// Path A: Password (1) + 1 factor (1) = 2
-	// Path B: 2 factors = 2
-	if factorsCount < 2 {
-		respondError(c, http.StatusForbidden, CodeInsufficientAuthLevel, "Insufficient verification factors. Provide password + 1 factor, or 2 factors.")
+	if !anyFactorVerified {
+		respondError(c, http.StatusForbidden, CodeInsufficientAuthLevel, "Insufficient verification factors. Provide at least one 2FA factor (TOTP, Email Code, or WebAuthn).")
 		return
 	}
 
@@ -199,18 +181,6 @@ func (usc *UserSecurityController) ChangeEmail(c *gin.Context) {
 			"verified": false,
 		}
 
-		// Update Password if Path B and new password provided
-		if !passwordVerified && req.NewPassword != "" {
-			if len(req.NewPassword) < 6 {
-				return errors.New("new password too short")
-			}
-			hashed, err := utils.HashPassword(req.NewPassword)
-			if err != nil {
-				return err
-			}
-			updates["password"] = hashed
-		}
-
 		if err := tx.Model(user).Updates(updates).Error; err != nil {
 			return err
 		}
@@ -219,17 +189,12 @@ func (usc *UserSecurityController) ChangeEmail(c *gin.Context) {
 	})
 
 	if err != nil {
-		if err.Error() == "new password too short" {
-			respondError(c, http.StatusBadRequest, CodePasswordTooShort, err.Error())
-		} else {
-			respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to update user information")
-		}
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to update user information")
 		return
 	}
 
 	respondOK(c, "Email updated successfully", gin.H{
-		"email":            req.NewEmail,
-		"password_updated": !passwordVerified && req.NewPassword != "",
+		"email": req.NewEmail,
 	})
 }
 
