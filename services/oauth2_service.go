@@ -513,6 +513,7 @@ func publicSiteScopes() []string {
 		"webauthn.2fa",
 		"email-2fa.toggle",
 		"email-2fa.status",
+		"user.security.manage",
 	}
 }
 
@@ -544,6 +545,7 @@ func targetedServiceScopes() []string {
 		"webauthn.2fa.as-service",
 		"email-2fa.toggle.as-service",
 		"email-2fa.status.as-service",
+		"user.security.manage.as-service",
 	}
 }
 

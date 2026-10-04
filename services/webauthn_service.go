@@ -36,6 +36,7 @@ const (
 	webAuthnFlowTypeLogin        = "login"
 	webAuthnFlowTypeDiscoverable = "discoverable_login"
 	webAuthnFlowTypeSecondFactor = "second_factor"
+	webAuthnFlowTypeSudo         = "sudo"
 )
 
 var (
@@ -380,6 +381,37 @@ func (ws *WebAuthnService) BeginSecondFactorLogin(userUUID string, loginTicket s
 	return assertion, flowID, nil
 }
 
+func (ws *WebAuthnService) BeginSudoLogin(userUUID string) (*protocol.CredentialAssertion, string, error) {
+	identity, err := ws.loadIdentityByUUID(userUUID)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(identity.credentials) == 0 {
+		return nil, "", ErrWebAuthnNotConfigured
+	}
+
+	instance, err := ws.instance()
+	if err != nil {
+		return nil, "", err
+	}
+
+	assertion, session, err := instance.BeginLogin(identity, wa.WithUserVerification(protocol.VerificationPreferred))
+	if err != nil {
+		return nil, "", err
+	}
+
+	flowID, err := ws.saveFlow(&webAuthnFlow{
+		Type:        webAuthnFlowTypeSudo,
+		UserID:      userUUID,
+		SessionData: *session,
+	})
+	if err != nil {
+		return nil, "", err
+	}
+
+	return assertion, flowID, nil
+}
+
 func (ws *WebAuthnService) FinishLogin(flowID string, payload []byte) (*models.User, error) {
 	flow, err := ws.getFlow(flowID)
 	if err != nil {
@@ -406,7 +438,7 @@ func (ws *WebAuthnService) FinishLogin(flowID string, payload []byte) (*models.U
 	}
 
 	switch flow.Type {
-	case webAuthnFlowTypeLogin, webAuthnFlowTypeSecondFactor:
+	case webAuthnFlowTypeLogin, webAuthnFlowTypeSecondFactor, webAuthnFlowTypeSudo:
 		identity, err := ws.loadIdentityByUUID(flow.UserID)
 		if err != nil {
 			return nil, err

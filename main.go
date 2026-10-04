@@ -121,6 +121,7 @@ func main() {
 	oauth2Ctrl := controllers.NewOAuth2Controller()
 	webauthnCtrl := controllers.NewWebAuthnController()
 	email2faCtrl := controllers.NewEmail2FAController()
+	userSecurityCtrl := controllers.NewUserSecurityController()
 
 	if err := services.NewOAuth2Service().EnsureBuiltInClients(); err != nil {
 		log.Fatalf("Failed to ensure OAuth2 built-in clients: %v", err)
@@ -162,6 +163,10 @@ func main() {
 		api.POST("/user/declare-email", userInfoCtrl.DeclareEmail)
 		api.POST("/user/mojang-bind-enable", userInfoCtrl.EnableMojangBind)
 		api.POST("/user/mojang-bind-disable", userInfoCtrl.DisableMojangBind)
+
+		api.POST("/user/security/change-email/send-code", userSecurityCtrl.SendChangeEmailCode)
+		api.POST("/user/security/change-email/webauthn-begin", userSecurityCtrl.BeginWebAuthnSudo)
+		api.POST("/user/security/change-email", userSecurityCtrl.ChangeEmail)
 
 		api.POST("/email-verification", emailCtrl.Handle)
 
