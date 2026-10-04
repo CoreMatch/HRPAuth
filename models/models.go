@@ -20,6 +20,7 @@ type User struct {
 	TOTP               string     `gorm:"type:varchar(32);column:totp"`
 	TwoFA              bool       `gorm:"type:tinyint(1);not null;default:0;column:2FA"`
 	WebAuthn2FAEnabled bool       `gorm:"type:tinyint(1);not null;default:0;column:webauthn_2fa_enabled"`
+	Email2FAEnabled    bool       `gorm:"type:tinyint(1);not null;default:0;column:email_2fa_enabled"`
 	CBH                bool       `gorm:"type:tinyint(1);not null;default:1;column:cbh"`
 	// MBE (Mojang Bind Enabled): when 1, an unbound WebUI user accepts a
 	// M.T. /register bind that supplies a mojang_uuid (see Register §3.4 2.a).

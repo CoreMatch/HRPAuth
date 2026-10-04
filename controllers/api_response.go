@@ -54,6 +54,7 @@ const (
 	CodeTOTPNotConfigured              = "totp_not_configured"
 	CodePasscodeInvalid                = "invalid_passcode"
 	CodeWebAuthnNotConfigured          = "webauthn_not_configured"
+	CodeEmail2FANotConfigured          = "email_2fa_not_configured"
 	CodeInvalidWebAuthnFlow            = "invalid_webauthn_flow"
 	CodeWebAuthnCredentialNotFound     = "webauthn_credential_not_found"
 	CodeWebAuthnVerificationFailed     = "webauthn_verification_failed"

@@ -97,8 +97,9 @@ func (oc *OAuth2Controller) LoginTicket(c *gin.Context) {
 		return
 	}
 	hasWebAuthn := fullUser.WebAuthn2FAEnabled && webAuthnCount > 0
+	hasEmail2FA := fullUser.Email2FAEnabled
 
-	if !hasTOTP && !hasWebAuthn {
+	if !hasTOTP && !hasWebAuthn && !hasEmail2FA {
 		issueAndRespondFirstPartyUserTokens(c, fullUser.UUID, "OAuth2 token issued", nil)
 		return
 	}
@@ -115,7 +116,8 @@ func (oc *OAuth2Controller) LoginTicket(c *gin.Context) {
 	respondOK(c, "Login ticket issued", gin.H{
 		"totp_required":     hasTOTP,
 		"webauthn_required": hasWebAuthn,
-		"second_factors":    availableSecondFactors(hasTOTP, hasWebAuthn),
+		"email_required":    hasEmail2FA,
+		"second_factors":    availableSecondFactors(hasTOTP, hasWebAuthn, hasEmail2FA),
 		"login_ticket":      ticket,
 		"expires_in":        config.AppConfig.OAuth2.AuthorizationCodeTTL,
 	})
@@ -312,13 +314,16 @@ func parseScopesOrNil(raw string) []string {
 	return scopes
 }
 
-func availableSecondFactors(hasTOTP bool, hasWebAuthn bool) []string {
-	factors := make([]string, 0, 2)
+func availableSecondFactors(hasTOTP bool, hasWebAuthn bool, hasEmail2FA bool) []string {
+	factors := make([]string, 0, 3)
 	if hasTOTP {
 		factors = append(factors, "totp")
 	}
 	if hasWebAuthn {
 		factors = append(factors, "webauthn")
+	}
+	if hasEmail2FA {
+		factors = append(factors, "email")
 	}
 	return factors
 }

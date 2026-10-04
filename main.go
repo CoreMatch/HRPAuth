@@ -120,6 +120,7 @@ func main() {
 	captchaCtrl := controllers.NewCaptchaController()
 	oauth2Ctrl := controllers.NewOAuth2Controller()
 	webauthnCtrl := controllers.NewWebAuthnController()
+	email2faCtrl := controllers.NewEmail2FAController()
 
 	if err := services.NewOAuth2Service().EnsureBuiltInClients(); err != nil {
 		log.Fatalf("Failed to ensure OAuth2 built-in clients: %v", err)
@@ -163,6 +164,11 @@ func main() {
 		api.POST("/user/mojang-bind-disable", userInfoCtrl.DisableMojangBind)
 
 		api.POST("/email-verification", emailCtrl.Handle)
+
+		api.POST("/email-2fa/send", email2faCtrl.SendCode)
+		api.POST("/email-2fa/verify", email2faCtrl.VerifyCode)
+		api.POST("/email-2fa/toggle", email2faCtrl.Toggle)
+		api.POST("/email-2fa/status", email2faCtrl.Status)
 
 		api.GET("/totpgen", totpCtrl.Generate)
 		api.POST("/totp/setup", totpCtrl.SetupTOTP)
