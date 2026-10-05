@@ -171,6 +171,7 @@ func main() {
 		api.POST("/user/security/recovery-key/regenerate", userSecurityCtrl.RegenerateRecoveryKey)
 		api.POST("/user/security/recovery-key/revoke", userSecurityCtrl.RevokeRecoveryKey)
 		api.POST("/user/security/recovery-key/verify", userSecurityCtrl.VerifyRecoveryKey)
+		api.POST("/user/security/recovery-key/status", userSecurityCtrl.RecoveryKeyStatus)
 
 		api.POST("/email-verification", emailCtrl.Handle)
 

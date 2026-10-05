@@ -325,6 +325,28 @@ func (usc *UserSecurityController) VerifyRecoveryKey(c *gin.Context) {
 	issueAndRespondFirstPartyUserTokens(c, user.UUID, "Recovery key verified successfully", nil)
 }
 
+func (usc *UserSecurityController) RecoveryKeyStatus(c *gin.Context) {
+	var req struct {
+		UID string `json:"uid"`
+	}
+	uid := c.Query("uid")
+	if uid == "" {
+		if err := c.ShouldBindJSON(&req); err == nil {
+			uid = req.UID
+		}
+	}
+
+	authResult, ok := resolveSiteBearerAuth(c, "user.security.manage", "user.security.manage.as-service", false, uid, "")
+	if !ok {
+		return
+	}
+	user := authResult.User
+
+	respondOK(c, "Recovery key status retrieved", gin.H{
+		"enabled": user.RecoveryKeyEnabled,
+	})
+}
+
 func (usc *UserSecurityController) generateRecoveryKey() string {
 	// Generate a key like ABCD-EFGH-IJKL-MNOP
 	k1 := strings.ToUpper(utils.GenerateRandomToken(2))
