@@ -588,7 +588,7 @@ func (ts *TextureService) GetProfileProperties(profileID string, unsigned bool) 
 	return props, nil
 }
 
-func (ts *TextureService) GetTextureByProfile(profileID, textureType string) (*TextureInfo, error) {
+func (ts *TextureService) GetAllTexturesByProfile(profileID string) (map[string]TextureInfo, error) {
 	var prop models.ProfileProperty
 	result := database.DB.
 		Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").
@@ -608,7 +608,16 @@ func (ts *TextureService) GetTextureByProfile(profileID, textureType string) (*T
 		return nil, fmt.Errorf("failed to unmarshal texture payload: %v", err)
 	}
 
-	textureInfo, ok := payload.Textures[strings.ToUpper(textureType)]
+	return payload.Textures, nil
+}
+
+func (ts *TextureService) GetTextureByProfile(profileID, textureType string) (*TextureInfo, error) {
+	textures, err := ts.GetAllTexturesByProfile(profileID)
+	if err != nil {
+		return nil, err
+	}
+
+	textureInfo, ok := textures[strings.ToUpper(textureType)]
 	if !ok {
 		return nil, fmt.Errorf("texture type %s not found", textureType)
 	}

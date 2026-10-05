@@ -320,27 +320,20 @@ func (tc *TextureController) GetTexture(c *gin.Context) {
 		return
 	}
 
-	skinInfo, _ := tc.textureService.GetTextureByProfile(profileID, "skin")
-	capeInfo, _ := tc.textureService.GetTextureByProfile(profileID, "cape")
-
+	texturesMap, _ := tc.textureService.GetAllTexturesByProfile(profileID)
 	textures := make([]TextureResponse, 0)
-	if skinInfo != nil {
-		skinResp := TextureResponse{
-			TextureType: "skin",
-			URL:         skinInfo.URL,
+
+	for tType, info := range texturesMap {
+		resp := TextureResponse{
+			TextureType: strings.ToLower(tType),
+			URL:         info.URL,
 		}
-		if skinInfo.Metadata != nil {
-			if model, ok := skinInfo.Metadata["model"]; ok {
-				skinResp.Model = model.(string)
+		if info.Metadata != nil {
+			if model, ok := info.Metadata["model"]; ok {
+				resp.Model = model.(string)
 			}
 		}
-		textures = append(textures, skinResp)
-	}
-	if capeInfo != nil {
-		textures = append(textures, TextureResponse{
-			TextureType: "cape",
-			URL:         capeInfo.URL,
-		})
+		textures = append(textures, resp)
 	}
 
 	respondOK(c, "获取材质信息成功", gin.H{

@@ -397,13 +397,13 @@ func (wc *WebAuthnController) respondWebAuthnError(c *gin.Context, err error) {
 	}
 }
 
-func loadLoginTicket(ticket string) (*loginTicketPayload, error) {
+func loadLoginTicket(ticket string) (*LoginTicketPayload, error) {
 	raw, err := appredis.Client.Get(context.Background(), config.AppConfig.Redis.Prefix+"oauth2:login_ticket:"+ticket).Result()
 	if err != nil {
 		return nil, err
 	}
 
-	var payload loginTicketPayload
+	var payload LoginTicketPayload
 	if err := json.Unmarshal([]byte(raw), &payload); err != nil || payload.UserID == "" {
 		return nil, errors.New("invalid login ticket")
 	}
