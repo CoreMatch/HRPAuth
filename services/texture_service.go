@@ -25,6 +25,7 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
+	"gorm.io/gorm"
 )
 
 type TextureService struct{}
@@ -253,15 +254,35 @@ func (ts *TextureService) UploadTexture(accessToken, profileID, textureType, mod
 	return warnings, nil
 }
 
-func (ts *TextureService) UpdateProfileTexture(profileID, textureType, textureURL, model string) error {
-	// Step 1: Mark old active row as orphan.
-	var existingProp models.ProfileProperty
-	if err := database.DB.
-		Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").
-		First(&existingProp).Error; err == nil {
-		ts.markOldTextureOrphan(&existingProp, textureType)
+func (ts *TextureService) createTombstoneValue(prop *models.ProfileProperty, textureType string) string {
+	decoded, err := base64.StdEncoding.DecodeString(prop.Value)
+	if err != nil {
+		return prop.Value
+	}
+	var payload TexturesPayload
+	if err := json.Unmarshal(decoded, &payload); err != nil {
+		return prop.Value
 	}
 
+	info, ok := payload.Textures[strings.ToUpper(textureType)]
+	if !ok {
+		return prop.Value
+	}
+
+	newPayload := TexturesPayload{
+		Timestamp:   payload.Timestamp,
+		ProfileID:   payload.ProfileID,
+		ProfileName: payload.ProfileName,
+		Textures: map[string]TextureInfo{
+			strings.ToUpper(textureType): info,
+		},
+	}
+	data, _ := json.Marshal(newPayload)
+	return base64.StdEncoding.EncodeToString(data)
+}
+
+func (ts *TextureService) UpdateProfileTexture(profileID, textureType, textureURL, model string) error {
+	// 1. Generate the new merged payload while the old row is still active.
 	payload := ts.GenerateTexturesPayload(profileID, textureType, textureURL, model)
 	value := base64.StdEncoding.EncodeToString([]byte(payload))
 
@@ -270,32 +291,40 @@ func (ts *TextureService) UpdateProfileTexture(profileID, textureType, textureUR
 		return err
 	}
 
-	// Step 2: Check for an existing orphan row to reactivate.
-	var orphanProp models.ProfileProperty
-	if err := database.DB.
-		Where("profile_id = ? AND name = ? AND delete_when > 0", profileID, "textures").
-		First(&orphanProp).Error; err == nil {
-		orphanProp.Value = value
-		orphanProp.Signature = signature
-		orphanProp.DeleteWhen = 0
-		if err := database.DB.Save(&orphanProp).Error; err != nil {
-			return fmt.Errorf("failed to reactivate orphan profile property: %v", err)
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		// 2. Find the current active row.
+		var existingProp models.ProfileProperty
+		if err := tx.Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").First(&existingProp).Error; err == nil {
+			// 3. Mark the old row as a tombstone for cleanup.
+			expiryDays := config.AppConfig.Storage.OrphanFileExpiryDays
+			if expiryDays <= 0 {
+				expiryDays = 7
+			}
+			deleteWhen := time.Now().Unix() + int64(expiryDays)*86400
+			tombstoneValue := ts.createTombstoneValue(&existingProp, textureType)
+
+			if err := tx.Model(&existingProp).Updates(map[string]interface{}{
+				"delete_when": deleteWhen,
+				"value":       tombstoneValue,
+				"signature":   "",
+			}).Error; err != nil {
+				return fmt.Errorf("failed to mark old profile property as tombstone: %v", err)
+			}
+		}
+
+		// 4. Create a NEW active row with the merged payload.
+		newProp := models.ProfileProperty{
+			ProfileID:  profileID,
+			Name:       "textures",
+			Value:      value,
+			Signature:  signature,
+			DeleteWhen: 0,
+		}
+		if err := tx.Create(&newProp).Error; err != nil {
+			return fmt.Errorf("failed to create new profile property: %v", err)
 		}
 		return nil
-	}
-
-	// Step 3: No existing row — create new.
-	prop := models.ProfileProperty{
-		ProfileID: profileID,
-		Name:      "textures",
-		Value:     value,
-		Signature: signature,
-	}
-	if err := database.DB.Create(&prop).Error; err != nil {
-		return fmt.Errorf("failed to create profile property: %v", err)
-	}
-
-	return nil
+	})
 }
 
 // markOldTextureOrphan extracts the old texture file hash for the given type
@@ -439,55 +468,67 @@ func (ts *TextureService) RemoveTextureByUser(userID, profileID, textureType str
 		return fmt.Errorf("profile not owned by user")
 	}
 
-	var prop models.ProfileProperty
-	result := database.DB.
-		Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").
-		First(&prop)
+	return database.DB.Transaction(func(tx *gorm.DB) error {
+		var prop models.ProfileProperty
+		if err := tx.Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").First(&prop).Error; err != nil {
+			return nil // No active textures to remove.
+		}
 
-	if result.Error != nil {
-		return nil
-	}
+		decoded, err := base64.StdEncoding.DecodeString(prop.Value)
+		if err != nil {
+			return fmt.Errorf("failed to decode texture property: %v", err)
+		}
 
-	decoded, err := base64.StdEncoding.DecodeString(prop.Value)
-	if err != nil {
-		return fmt.Errorf("failed to decode texture property: %v", err)
-	}
+		var payload TexturesPayload
+		if err := json.Unmarshal(decoded, &payload); err != nil {
+			return fmt.Errorf("failed to unmarshal texture payload: %v", err)
+		}
 
-	var payload TexturesPayload
-	if err := json.Unmarshal(decoded, &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal texture payload: %v", err)
-	}
+		// Only the removed texture should be in the orphan row.
+		tombstoneValue := ts.createTombstoneValue(&prop, textureType)
 
-	delete(payload.Textures, strings.ToUpper(textureType))
+		delete(payload.Textures, strings.ToUpper(textureType))
 
-	if len(payload.Textures) == 0 {
-		// Mark entire row as orphan instead of deleting it.
 		expiryDays := config.AppConfig.Storage.OrphanFileExpiryDays
 		if expiryDays <= 0 {
 			expiryDays = 7
 		}
-		prop.DeleteWhen = time.Now().Unix() + int64(expiryDays)*86400
-		if err := database.DB.Save(&prop).Error; err != nil {
-			return fmt.Errorf("failed to mark profile property as orphan: %v", err)
+		deleteWhen := time.Now().Unix() + int64(expiryDays)*86400
+
+		if len(payload.Textures) == 0 {
+			// Mark entire row as orphan since all textures are gone.
+			return tx.Model(&prop).Updates(map[string]interface{}{
+				"delete_when": deleteWhen,
+				"signature":   "",
+			}).Error
 		}
-	} else {
+
+		// Update old row to tombstone and create a new active row.
+		if err := tx.Model(&prop).Updates(map[string]interface{}{
+			"delete_when": deleteWhen,
+			"value":       tombstoneValue,
+			"signature":   "",
+		}).Error; err != nil {
+			return err
+		}
+
 		payload.Timestamp = time.Now().UnixMilli()
 		newData, _ := json.Marshal(payload)
 		newValue := base64.StdEncoding.EncodeToString(newData)
-
 		signature, err := ts.SignTextureValue(newValue)
 		if err != nil {
 			return err
 		}
 
-		prop.Value = newValue
-		prop.Signature = signature
-		if err := database.DB.Save(&prop).Error; err != nil {
-			return fmt.Errorf("failed to update profile property: %v", err)
+		newProp := models.ProfileProperty{
+			ProfileID:  profileID,
+			Name:       "textures",
+			Value:      newValue,
+			Signature:  signature,
+			DeleteWhen: 0,
 		}
-	}
-
-	return nil
+		return tx.Create(&newProp).Error
+	})
 }
 
 func (ts *TextureService) RemoveTexture(accessToken, profileID, textureType string) error {
@@ -496,59 +537,7 @@ func (ts *TextureService) RemoveTexture(accessToken, profileID, textureType stri
 		return fmt.Errorf("invalid access token")
 	}
 
-	if !NewAuthService().IsProfileOwnedByUser(profileID, token.UserID) {
-		return fmt.Errorf("profile not owned by user")
-	}
-
-	var prop models.ProfileProperty
-	result := database.DB.
-		Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").
-		First(&prop)
-
-	if result.Error != nil {
-		return nil
-	}
-
-	decoded, err := base64.StdEncoding.DecodeString(prop.Value)
-	if err != nil {
-		return fmt.Errorf("failed to decode texture property: %v", err)
-	}
-
-	var payload TexturesPayload
-	if err := json.Unmarshal(decoded, &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal texture payload: %v", err)
-	}
-
-	delete(payload.Textures, strings.ToUpper(textureType))
-
-	if len(payload.Textures) == 0 {
-		// Mark entire row as orphan instead of deleting it.
-		expiryDays := config.AppConfig.Storage.OrphanFileExpiryDays
-		if expiryDays <= 0 {
-			expiryDays = 7
-		}
-		prop.DeleteWhen = time.Now().Unix() + int64(expiryDays)*86400
-		if err := database.DB.Save(&prop).Error; err != nil {
-			return fmt.Errorf("failed to mark profile property as orphan: %v", err)
-		}
-	} else {
-		payload.Timestamp = time.Now().UnixMilli()
-		newData, _ := json.Marshal(payload)
-		newValue := base64.StdEncoding.EncodeToString(newData)
-
-		signature, err := ts.SignTextureValue(newValue)
-		if err != nil {
-			return err
-		}
-
-		prop.Value = newValue
-		prop.Signature = signature
-		if err := database.DB.Save(&prop).Error; err != nil {
-			return fmt.Errorf("failed to update profile property: %v", err)
-		}
-	}
-
-	return nil
+	return ts.RemoveTextureByUser(token.UserID, profileID, textureType)
 }
 
 func (ts *TextureService) GetProfileProperties(profileID string, unsigned bool) ([]models.ProfileProperty, error) {
@@ -592,6 +581,7 @@ func (ts *TextureService) GetAllTexturesByProfile(profileID string) (map[string]
 	var prop models.ProfileProperty
 	result := database.DB.
 		Where("profile_id = ? AND name = ? AND delete_when = 0", profileID, "textures").
+		Order("id DESC").
 		First(&prop)
 
 	if result.Error != nil {
