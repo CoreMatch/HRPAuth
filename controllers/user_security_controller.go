@@ -1,14 +1,17 @@
 package controllers
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
+	appredis "github.com/lnb/HRPAuth-Backend-Go/redis"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
 	"github.com/lnb/HRPAuth-Backend-Go/utils"
 	"gorm.io/gorm"
@@ -31,10 +34,21 @@ func NewUserSecurityController() *UserSecurityController {
 }
 
 type ChangeEmailRequest struct {
-	NewEmail  string `json:"new_email"`
-	TOTPCode  string `json:"totp_code"`
-	EmailCode string `json:"email_code"`
-	WebAuthn  struct {
+	NewEmail    string `json:"new_email"`
+	TOTPCode    string `json:"totp_code"`
+	EmailCode   string `json:"email_code"`
+	RecoveryKey string `json:"recovery_key"`
+	WebAuthn    struct {
+		FlowID     string          `json:"flow_id"`
+		Credential json.RawMessage `json:"credential"`
+	} `json:"webauthn"`
+}
+
+type RecoveryKeyRequest struct {
+	TOTPCode    string `json:"totp_code"`
+	EmailCode   string `json:"email_code"`
+	RecoveryKey string `json:"recovery_key"`
+	WebAuthn    struct {
 		FlowID     string          `json:"flow_id"`
 		Credential json.RawMessage `json:"credential"`
 	} `json:"webauthn"`
@@ -127,49 +141,18 @@ func (usc *UserSecurityController) ChangeEmail(c *gin.Context) {
 	}
 
 	// Verify factors
-	anyFactorVerified := false
-
-	// 1. TOTP
-	if req.TOTPCode != "" {
-		if user.TwoFA && user.TOTP != "" {
-			if usc.verifyTOTP(user.TOTP, req.TOTPCode) {
-				anyFactorVerified = true
-			} else {
-				respondError(c, http.StatusUnauthorized, CodePasscodeInvalid, "Invalid TOTP code")
-				return
-			}
-		} else {
-			respondError(c, http.StatusBadRequest, CodeTOTPNotConfigured, "TOTP not configured")
-			return
-		}
-	}
-
-	// 2. Email Code
-	if req.EmailCode != "" {
-		storedCode, found := usc.codeStore.Get(user.Email)
-		if found && storedCode == req.EmailCode {
-			anyFactorVerified = true
-			usc.codeStore.Delete(user.Email)
-		} else {
-			respondError(c, http.StatusUnauthorized, CodeVerificationCodeInvalid, "Invalid or expired email verification code")
-			return
-		}
-	}
-
-	// 3. WebAuthn
-	if req.WebAuthn.FlowID != "" && len(req.WebAuthn.Credential) > 0 {
-		_, err := usc.webauthnService.FinishLogin(req.WebAuthn.FlowID, req.WebAuthn.Credential)
-		if err == nil {
-			anyFactorVerified = true
-		} else {
-			respondError(c, http.StatusUnauthorized, CodeWebAuthnVerificationFailed, "WebAuthn verification failed")
-			return
-		}
-	}
+	anyFactorVerified := usc.verifyAnyFactor(c, user, RecoveryKeyRequest{
+		TOTPCode:    req.TOTPCode,
+		EmailCode:   req.EmailCode,
+		RecoveryKey: req.RecoveryKey,
+		WebAuthn:    req.WebAuthn,
+	})
 
 	// Final Check
 	if !anyFactorVerified {
-		respondError(c, http.StatusForbidden, CodeInsufficientAuthLevel, "Insufficient verification factors. Provide at least one 2FA factor (TOTP, Email Code, or WebAuthn).")
+		if !c.IsAborted() {
+			respondError(c, http.StatusForbidden, CodeInsufficientAuthLevel, "Insufficient verification factors. Provide at least one 2FA factor (TOTP, Email Code, WebAuthn, or Recovery Key).")
+		}
 		return
 	}
 
@@ -196,6 +179,224 @@ func (usc *UserSecurityController) ChangeEmail(c *gin.Context) {
 	respondOK(c, "Email updated successfully", gin.H{
 		"email": req.NewEmail,
 	})
+}
+
+func (usc *UserSecurityController) CreateRecoveryKey(c *gin.Context) {
+	authResult, ok := resolveSiteBearerAuth(c, "user.security.manage", "user.security.manage.as-service", false, "", "")
+	if !ok {
+		return
+	}
+	user := authResult.User
+
+	if user.RecoveryKeyEnabled {
+		respondError(c, http.StatusBadRequest, CodeRecoveryKeyAlreadyConfigured, "Recovery key already configured. Use regenerate instead.")
+		return
+	}
+
+	key := usc.generateRecoveryKey()
+	hashedKey, _ := utils.HashPassword(key)
+
+	if err := database.DB.Model(user).Updates(map[string]interface{}{
+		"recovery_key":         hashedKey,
+		"recovery_key_enabled": true,
+	}).Error; err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to store recovery key")
+		return
+	}
+
+	respondOK(c, "Recovery key created successfully. Please store it securely.", gin.H{
+		"recovery_key": key,
+	})
+}
+
+func (usc *UserSecurityController) RegenerateRecoveryKey(c *gin.Context) {
+	authResult, ok := resolveSiteBearerAuth(c, "user.security.manage", "user.security.manage.as-service", false, "", "")
+	if !ok {
+		return
+	}
+	user := authResult.User
+
+	var req RecoveryKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
+		return
+	}
+
+	if !usc.verifyAnyFactor(c, user, req) {
+		if !c.IsAborted() {
+			respondError(c, http.StatusForbidden, CodeInsufficientAuthLevel, "Insufficient verification factors.")
+		}
+		return
+	}
+
+	key := usc.generateRecoveryKey()
+	hashedKey, _ := utils.HashPassword(key)
+
+	if err := database.DB.Model(user).Updates(map[string]interface{}{
+		"recovery_key":         hashedKey,
+		"recovery_key_enabled": true,
+	}).Error; err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to update recovery key")
+		return
+	}
+
+	respondOK(c, "Recovery key regenerated successfully", gin.H{
+		"recovery_key": key,
+	})
+}
+
+func (usc *UserSecurityController) RevokeRecoveryKey(c *gin.Context) {
+	authResult, ok := resolveSiteBearerAuth(c, "user.security.manage", "user.security.manage.as-service", false, "", "")
+	if !ok {
+		return
+	}
+	user := authResult.User
+
+	var req RecoveryKeyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
+		return
+	}
+
+	if !usc.verifyAnyFactor(c, user, req) {
+		if !c.IsAborted() {
+			respondError(c, http.StatusForbidden, CodeInsufficientAuthLevel, "Insufficient verification factors.")
+		}
+		return
+	}
+
+	if err := database.DB.Model(user).Updates(map[string]interface{}{
+		"recovery_key":         "",
+		"recovery_key_enabled": false,
+	}).Error; err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to revoke recovery key")
+		return
+	}
+
+	respondOK(c, "Recovery key revoked successfully", nil)
+}
+
+func (usc *UserSecurityController) VerifyRecoveryKey(c *gin.Context) {
+	var req struct {
+		LoginTicket string `json:"login_ticket"`
+		RecoveryKey string `json:"recovery_key"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
+		return
+	}
+
+	if req.LoginTicket == "" || req.RecoveryKey == "" {
+		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing login_ticket or recovery_key")
+		return
+	}
+
+	ctx := context.Background()
+	key := config.AppConfig.Redis.Prefix + "oauth2:login_ticket:" + req.LoginTicket
+	raw, err := appredis.Client.Get(ctx, key).Result()
+	if err != nil {
+		respondError(c, http.StatusUnauthorized, CodeInvalidLoginTicket, "Invalid or expired login ticket")
+		return
+	}
+
+	var ticket LoginTicketPayload
+	if err := json.Unmarshal([]byte(raw), &ticket); err != nil || ticket.UserID == "" {
+		respondError(c, http.StatusUnauthorized, CodeInvalidLoginTicket, "Invalid or expired login ticket")
+		return
+	}
+
+	var user models.User
+	result := database.DB.Where("uuid = ?", ticket.UserID).First(&user)
+	if result.Error != nil || !user.RecoveryKeyEnabled || user.RecoveryKey == "" {
+		respondError(c, http.StatusUnauthorized, CodeRecoveryKeyNotConfigured, "User not found or recovery key not configured")
+		return
+	}
+
+	if !utils.CheckPasswordHash(req.RecoveryKey, user.RecoveryKey) {
+		respondError(c, http.StatusUnauthorized, CodePasscodeInvalid, "Invalid recovery key")
+		return
+	}
+
+	if err := appredis.Client.Del(ctx, key).Err(); err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to consume login ticket")
+		return
+	}
+
+	issueAndRespondFirstPartyUserTokens(c, user.UUID, "Recovery key verified successfully", nil)
+}
+
+func (usc *UserSecurityController) generateRecoveryKey() string {
+	// Generate a key like ABCD-EFGH-IJKL-MNOP
+	k1 := strings.ToUpper(utils.GenerateRandomToken(2))
+	k2 := strings.ToUpper(utils.GenerateRandomToken(2))
+	k3 := strings.ToUpper(utils.GenerateRandomToken(2))
+	k4 := strings.ToUpper(utils.GenerateRandomToken(2))
+	return k1 + "-" + k2 + "-" + k3 + "-" + k4
+}
+
+func (usc *UserSecurityController) verifyAnyFactor(c *gin.Context, user *models.User, req RecoveryKeyRequest) bool {
+	anyFactorVerified := false
+
+	// 1. TOTP
+	if req.TOTPCode != "" {
+		if user.TwoFA && user.TOTP != "" {
+			if usc.verifyTOTP(user.TOTP, req.TOTPCode) {
+				anyFactorVerified = true
+			} else {
+				respondError(c, http.StatusUnauthorized, CodePasscodeInvalid, "Invalid TOTP code")
+				c.Abort()
+				return false
+			}
+		} else {
+			respondError(c, http.StatusBadRequest, CodeTOTPNotConfigured, "TOTP not configured")
+			c.Abort()
+			return false
+		}
+	}
+
+	// 2. Email Code
+	if req.EmailCode != "" {
+		storedCode, found := usc.codeStore.Get(user.Email)
+		if found && storedCode == req.EmailCode {
+			anyFactorVerified = true
+			usc.codeStore.Delete(user.Email)
+		} else {
+			respondError(c, http.StatusUnauthorized, CodeVerificationCodeInvalid, "Invalid or expired email verification code")
+			c.Abort()
+			return false
+		}
+	}
+
+	// 3. WebAuthn
+	if req.WebAuthn.FlowID != "" && len(req.WebAuthn.Credential) > 0 {
+		_, err := usc.webauthnService.FinishLogin(req.WebAuthn.FlowID, req.WebAuthn.Credential)
+		if err == nil {
+			anyFactorVerified = true
+		} else {
+			respondError(c, http.StatusUnauthorized, CodeWebAuthnVerificationFailed, "WebAuthn verification failed")
+			c.Abort()
+			return false
+		}
+	}
+
+	// 4. Recovery Key
+	if req.RecoveryKey != "" {
+		if user.RecoveryKeyEnabled && user.RecoveryKey != "" {
+			if utils.CheckPasswordHash(req.RecoveryKey, user.RecoveryKey) {
+				anyFactorVerified = true
+			} else {
+				respondError(c, http.StatusUnauthorized, CodePasscodeInvalid, "Invalid recovery key")
+				c.Abort()
+				return false
+			}
+		} else {
+			respondError(c, http.StatusBadRequest, CodeRecoveryKeyNotConfigured, "Recovery key not configured")
+			c.Abort()
+			return false
+		}
+	}
+
+	return anyFactorVerified
 }
 
 func (usc *UserSecurityController) verifyTOTP(secret string, code string) bool {

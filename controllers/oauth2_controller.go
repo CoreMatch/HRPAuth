@@ -56,10 +56,6 @@ type LoginTicketRequest struct {
 	Password string `json:"password"`
 }
 
-type loginTicketPayload struct {
-	UserID string `json:"user_id"`
-}
-
 func NewOAuth2Controller() *OAuth2Controller {
 	return &OAuth2Controller{
 		authService:   services.NewAuthService(),
@@ -98,14 +94,15 @@ func (oc *OAuth2Controller) LoginTicket(c *gin.Context) {
 	}
 	hasWebAuthn := fullUser.WebAuthn2FAEnabled && webAuthnCount > 0
 	hasEmail2FA := fullUser.Email2FAEnabled
+	hasRecoveryKey := fullUser.RecoveryKeyEnabled && fullUser.RecoveryKey != ""
 
-	if !hasTOTP && !hasWebAuthn && !hasEmail2FA {
+	if !hasTOTP && !hasWebAuthn && !hasEmail2FA && !hasRecoveryKey {
 		issueAndRespondFirstPartyUserTokens(c, fullUser.UUID, "OAuth2 token issued", nil)
 		return
 	}
 
 	ticket := utils.GenerateRandomToken(24)
-	payload, _ := json.Marshal(loginTicketPayload{UserID: fullUser.UUID})
+	payload, _ := json.Marshal(LoginTicketPayload{UserID: fullUser.UUID})
 	ctx := context.Background()
 	key := config.AppConfig.Redis.Prefix + "oauth2:login_ticket:" + ticket
 	if err := appredis.Client.Set(ctx, key, string(payload), time.Duration(config.AppConfig.OAuth2.AuthorizationCodeTTL)*time.Second).Err(); err != nil {
@@ -114,12 +111,13 @@ func (oc *OAuth2Controller) LoginTicket(c *gin.Context) {
 	}
 
 	respondOK(c, "Login ticket issued", gin.H{
-		"totp_required":     hasTOTP,
-		"webauthn_required": hasWebAuthn,
-		"email_required":    hasEmail2FA,
-		"second_factors":    availableSecondFactors(hasTOTP, hasWebAuthn, hasEmail2FA),
-		"login_ticket":      ticket,
-		"expires_in":        config.AppConfig.OAuth2.AuthorizationCodeTTL,
+		"totp_required":         hasTOTP,
+		"webauthn_required":     hasWebAuthn,
+		"email_required":        hasEmail2FA,
+		"recovery_key_required": hasRecoveryKey,
+		"second_factors":        availableSecondFactors(hasTOTP, hasWebAuthn, hasEmail2FA, hasRecoveryKey),
+		"login_ticket":          ticket,
+		"expires_in":            config.AppConfig.OAuth2.AuthorizationCodeTTL,
 	})
 }
 
@@ -314,8 +312,8 @@ func parseScopesOrNil(raw string) []string {
 	return scopes
 }
 
-func availableSecondFactors(hasTOTP bool, hasWebAuthn bool, hasEmail2FA bool) []string {
-	factors := make([]string, 0, 3)
+func availableSecondFactors(hasTOTP bool, hasWebAuthn bool, hasEmail2FA bool, hasRecoveryKey bool) []string {
+	factors := make([]string, 0, 4)
 	if hasTOTP {
 		factors = append(factors, "totp")
 	}
@@ -324,6 +322,9 @@ func availableSecondFactors(hasTOTP bool, hasWebAuthn bool, hasEmail2FA bool) []
 	}
 	if hasEmail2FA {
 		factors = append(factors, "email")
+	}
+	if hasRecoveryKey {
+		factors = append(factors, "recovery_key")
 	}
 	return factors
 }

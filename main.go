@@ -167,6 +167,10 @@ func main() {
 		api.POST("/user/security/change-email/send-code", userSecurityCtrl.SendChangeEmailCode)
 		api.POST("/user/security/change-email/webauthn-begin", userSecurityCtrl.BeginWebAuthnSudo)
 		api.POST("/user/security/change-email", userSecurityCtrl.ChangeEmail)
+		api.POST("/user/security/recovery-key/create", userSecurityCtrl.CreateRecoveryKey)
+		api.POST("/user/security/recovery-key/regenerate", userSecurityCtrl.RegenerateRecoveryKey)
+		api.POST("/user/security/recovery-key/revoke", userSecurityCtrl.RevokeRecoveryKey)
+		api.POST("/user/security/recovery-key/verify", userSecurityCtrl.VerifyRecoveryKey)
 
 		api.POST("/email-verification", emailCtrl.Handle)
 

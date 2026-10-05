@@ -58,6 +58,8 @@ const (
 	CodeInvalidWebAuthnFlow            = "invalid_webauthn_flow"
 	CodeWebAuthnCredentialNotFound     = "webauthn_credential_not_found"
 	CodeWebAuthnVerificationFailed     = "webauthn_verification_failed"
+	CodeRecoveryKeyAlreadyConfigured   = "recovery_key_already_configured"
+	CodeRecoveryKeyNotConfigured       = "recovery_key_not_configured"
 	CodeKeygenDisabled                 = "keygen_disabled"
 	CodeKeygenFailed                   = "keygen_failed"
 	CodeOAuthInvalidClient             = "oauth_invalid_client"

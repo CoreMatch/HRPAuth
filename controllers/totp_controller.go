@@ -101,7 +101,7 @@ func (tc *TOTPController) VerifyTOTP(c *gin.Context) {
 		return
 	}
 
-	var ticket loginTicketPayload
+	var ticket LoginTicketPayload
 	if err := json.Unmarshal([]byte(raw), &ticket); err != nil || ticket.UserID == "" {
 		respondError(c, http.StatusUnauthorized, CodeInvalidLoginTicket, "Invalid or expired login ticket")
 		return

@@ -105,6 +105,10 @@ func firstNonEmpty(values ...string) string {
 	return ""
 }
 
+type LoginTicketPayload struct {
+	UserID string `json:"user_id"`
+}
+
 func loadTargetUser(uid string, email string) (*models.User, bool) {
 	query := database.DB.Model(&models.User{})
 	if uid != "" {
