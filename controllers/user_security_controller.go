@@ -325,7 +325,7 @@ func (usc *UserSecurityController) VerifyRecoveryKey(c *gin.Context) {
 	issueAndRespondFirstPartyUserTokens(c, user.UUID, "Recovery key verified successfully", nil)
 }
 
-func (usc *UserSecurityController) RecoveryKeyStatus(c *gin.Context) {
+func (usc *UserSecurityController) GetTwoFactorStatus(c *gin.Context) {
 	var req struct {
 		UID string `json:"uid"`
 	}
@@ -342,8 +342,18 @@ func (usc *UserSecurityController) RecoveryKeyStatus(c *gin.Context) {
 	}
 	user := authResult.User
 
-	respondOK(c, "Recovery key status retrieved", gin.H{
-		"enabled": user.RecoveryKeyEnabled,
+	webauthnCount, err := usc.webauthnService.CountCredentials(user.UUID)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to inspect WebAuthn credentials")
+		return
+	}
+
+	respondOK(c, "Two-factor authentication status retrieved", gin.H{
+		"totp_enabled":         user.TwoFA && user.TOTP != "",
+		"webauthn_2fa_enabled": user.WebAuthn2FAEnabled,
+		"webauthn_credentials": webauthnCount,
+		"recovery_key_enabled": user.RecoveryKeyEnabled,
+		"email_2fa_enabled":    user.Email2FAEnabled,
 	})
 }
 

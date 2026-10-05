@@ -171,20 +171,18 @@ func main() {
 		api.POST("/user/security/recovery-key/regenerate", userSecurityCtrl.RegenerateRecoveryKey)
 		api.POST("/user/security/recovery-key/revoke", userSecurityCtrl.RevokeRecoveryKey)
 		api.POST("/user/security/recovery-key/verify", userSecurityCtrl.VerifyRecoveryKey)
-		api.POST("/user/security/recovery-key/status", userSecurityCtrl.RecoveryKeyStatus)
+		api.POST("/user/security/2fa/status", userSecurityCtrl.GetTwoFactorStatus)
 
 		api.POST("/email-verification", emailCtrl.Handle)
 
 		api.POST("/email-2fa/send", email2faCtrl.SendCode)
 		api.POST("/email-2fa/verify", email2faCtrl.VerifyCode)
 		api.POST("/email-2fa/toggle", email2faCtrl.Toggle)
-		api.POST("/email-2fa/status", email2faCtrl.Status)
 
 		api.GET("/totpgen", totpCtrl.Generate)
 		api.POST("/totp/setup", totpCtrl.SetupTOTP)
 		api.POST("/totp/verify", totpCtrl.VerifyTOTP)
 		api.POST("/totp/toggle", totpCtrl.Toggle2FA)
-		api.POST("/totp/hasbeenenabled", totpCtrl.HasBeenEnabled)
 
 		api.POST("/change-username", userProfileCtrl.ChangeUsername)
 		api.POST("/change-profile-name", userProfileCtrl.ChangeProfileName)

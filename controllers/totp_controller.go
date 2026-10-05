@@ -29,10 +29,6 @@ type VerifyTOTPRequest struct {
 	Passcode    string `json:"passcode"`
 }
 
-type HasBeenEnabledRequest struct {
-	UID string `json:"uid"`
-}
-
 func (tc *TOTPController) Generate(c *gin.Context) {
 	secret := c.Query("secret")
 	if secret == "" {
@@ -164,33 +160,5 @@ func (tc *TOTPController) Toggle2FA(c *gin.Context) {
 
 	respondOK(c, "2FA status updated successfully", gin.H{
 		"enabled": req.Enabled,
-	})
-}
-
-func (tc *TOTPController) HasBeenEnabled(c *gin.Context) {
-	var req HasBeenEnabledRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
-		return
-	}
-
-	uid := req.UID
-	if uid == "" {
-		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing uid")
-		return
-	}
-	authResult, ok := resolveSiteBearerAuth(c, "totp.status", "totp.status.as-service", false, uid, "")
-	if !ok {
-		return
-	}
-	user := *authResult.User
-
-	enabled := 0
-	if user.TwoFA && user.TOTP != "" {
-		enabled = 1
-	}
-
-	respondOK(c, "TOTP status retrieved", gin.H{
-		"enabled": enabled,
 	})
 }

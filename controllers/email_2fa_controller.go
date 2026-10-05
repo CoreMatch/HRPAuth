@@ -177,22 +177,3 @@ func (ec *Email2FAController) Toggle(c *gin.Context) {
 		"enabled": req.Enabled,
 	})
 }
-
-func (ec *Email2FAController) Status(c *gin.Context) {
-	uid := c.Query("uid")
-	if uid == "" {
-		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "Missing uid")
-		return
-	}
-
-	authResult, ok := resolveSiteBearerAuth(c, "email-2fa.status", "email-2fa.status.as-service", false, uid, "")
-	if !ok {
-		return
-	}
-	user := *authResult.User
-
-	respondOK(c, "Email 2FA status retrieved", gin.H{
-		"enabled":  user.Email2FAEnabled,
-		"verified": user.Verified,
-	})
-}
