@@ -96,7 +96,7 @@ func (oc *OAuth2Controller) LoginTicket(c *gin.Context) {
 	hasEmail2FA := fullUser.Email2FAEnabled
 	hasRecoveryKey := fullUser.RecoveryKeyEnabled && fullUser.RecoveryKey != ""
 
-	if !hasTOTP && !hasWebAuthn && !hasEmail2FA && !hasRecoveryKey {
+	if !hasTOTP && !hasWebAuthn && !hasEmail2FA {
 		issueAndRespondFirstPartyUserTokens(c, fullUser.UUID, "OAuth2 token issued", nil)
 		return
 	}
