@@ -1,0 +1,2 @@
+ALTER TABLE users ADD COLUMN recovery_key VARCHAR(255);
+ALTER TABLE users ADD COLUMN recovery_key_enabled TINYINT(1) NOT NULL DEFAULT 0;
