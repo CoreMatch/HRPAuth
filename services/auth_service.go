@@ -127,7 +127,14 @@ func (as *AuthService) deleteUserCascade(u models.User) error {
 		}
 
 		// 彻底删除用户记录
-		return tx.Unscoped().Delete(&u).Error
+		if err := tx.Unscoped().Delete(&u).Error; err != nil {
+			return err
+		}
+
+		// Notify Yggdrasil API to delete game account
+		go as.yggClient.DeleteAccount(u.UUID)
+
+		return nil
 	})
 }
 
