@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lnb/HRPAuth-Backend-Go/clients"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
@@ -20,10 +21,14 @@ import (
 // instances so the 24h loop and per-request M.T. triggers don't race.
 var botUserCleanupMu sync.Mutex
 
-type AuthService struct{}
+type AuthService struct {
+	yggClient *clients.YggdrasilClient
+}
 
 func NewAuthService() *AuthService {
-	return &AuthService{}
+	return &AuthService{
+		yggClient: clients.NewYggdrasilClient(),
+	}
 }
 
 type UserInfo struct {
@@ -175,7 +180,14 @@ func (as *AuthService) ChangeUsername(userUUID, newUsername string) error {
 		return fmt.Errorf("username already exists")
 	}
 
-	return database.DB.Model(&models.User{}).Where("uuid = ?", userUUID).Update("username", newUsername).Error
+	if err := database.DB.Model(&models.User{}).Where("uuid = ?", user.UUID).Update("username", newUsername).Error; err != nil {
+		return err
+	}
+
+	// Sync to Yggdrasil API
+	go as.yggClient.SyncUsername(user.UUID, newUsername)
+
+	return nil
 }
 
 func (as *AuthService) IsLoginRateLimited(identifier string) bool {

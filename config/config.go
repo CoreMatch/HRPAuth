@@ -26,12 +26,26 @@ type Config struct {
 	SMTP             SMTPConfig
 	Manage           ManageConfig
 	CoreAPI          CoreAPIConfig
+	YggdrasilAPI     YggdrasilAPIConfig
 	Yggdrasil        YggdrasilConfig
 	Storage          StorageConfig
 }
 
 type CoreAPIConfig struct {
 	InternalKey string
+}
+
+type YggdrasilAPIConfig struct {
+	BaseURL     string
+	InternalKey string
+}
+
+func parseYggdrasilAPIConfig(config map[string]interface{}) YggdrasilAPIConfig {
+	ygg, _ := config["yggdrasil_api"].(map[string]interface{})
+	return YggdrasilAPIConfig{
+		BaseURL:     getString(ygg, "base_url"),
+		InternalKey: getString(ygg, "internal_key"),
+	}
 }
 
 type StorageConfig struct {
@@ -220,6 +234,7 @@ func Load() {
 		SMTP:             parseSMTPConfig(yamlConfig),
 		Manage:           parseManageConfig(yamlConfig),
 		CoreAPI:          parseCoreAPIConfig(yamlConfig),
+		YggdrasilAPI:     parseYggdrasilAPIConfig(yamlConfig),
 		Yggdrasil:        parseYggdrasilConfig(yamlConfig),
 		Storage:          parseStorageConfig(yamlConfig),
 	}
