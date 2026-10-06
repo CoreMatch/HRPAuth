@@ -25,8 +25,13 @@ type Config struct {
 	Redis            RedisConfig
 	SMTP             SMTPConfig
 	Manage           ManageConfig
+	CoreAPI          CoreAPIConfig
 	Yggdrasil        YggdrasilConfig
 	Storage          StorageConfig
+}
+
+type CoreAPIConfig struct {
+	InternalKey string
 }
 
 type StorageConfig struct {
@@ -214,11 +219,19 @@ func Load() {
 		Redis:            parseRedisConfig(yamlConfig),
 		SMTP:             parseSMTPConfig(yamlConfig),
 		Manage:           parseManageConfig(yamlConfig),
+		CoreAPI:          parseCoreAPIConfig(yamlConfig),
 		Yggdrasil:        parseYggdrasilConfig(yamlConfig),
 		Storage:          parseStorageConfig(yamlConfig),
 	}
 
 	log.Println("Configuration loaded successfully")
+}
+
+func parseCoreAPIConfig(config map[string]interface{}) CoreAPIConfig {
+	core, _ := config["core_api"].(map[string]interface{})
+	return CoreAPIConfig{
+		InternalKey: getString(core, "internal_key"),
+	}
 }
 
 func parseSiteConfig(config map[string]interface{}) SiteConfig {

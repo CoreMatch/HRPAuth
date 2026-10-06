@@ -19,63 +19,15 @@ type User struct {
 	RegIP              string     `gorm:"type:varchar(40);column:regip"`
 	TOTP               string     `gorm:"type:varchar(32);column:totp"`
 	TwoFA              bool       `gorm:"type:tinyint(1);not null;default:0;column:2FA"`
-	WebAuthn2FAEnabled bool       `gorm:"type:tinyint(1);not null;default:0;column:webauthn_2fa_enabled"`
 	Email2FAEnabled    bool       `gorm:"type:tinyint(1);not null;default:0;column:email_2fa_enabled"`
 	RecoveryKey        string     `gorm:"type:varchar(255);column:recovery_key"`
 	RecoveryKeyEnabled bool       `gorm:"type:tinyint(1);not null;default:0;column:recovery_key_enabled"`
 	CBH                bool       `gorm:"type:tinyint(1);not null;default:1;column:cbh"`
-	// MBE (Mojang Bind Enabled): when 1, an unbound WebUI user accepts a
-	// M.T. /register bind that supplies a mojang_uuid (see Register §3.4 2.a).
-	// When 0 (default), colliding Mojang players get 409 (HA priority).
-	MBE        bool       `gorm:"type:tinyint(1);not null;default:0;column:mbe"`
-	MojangUUID *string    `gorm:"type:varchar(32);column:mojang_uuid;uniqueIndex:uk_users_mojang_uuid"`
-	DeletedAt  *time.Time `gorm:"index;column:deleted_at"`
+	DeletedAt          *time.Time `gorm:"index;column:deleted_at"`
 }
 
 func (User) TableName() string {
 	return "users"
-}
-
-type Profile struct {
-	ID        string    `gorm:"primaryKey;type:varchar(32);column:id"`
-	UserID    string    `gorm:"type:varchar(32);column:user_id;index"`
-	Name      string    `gorm:"type:varchar(30);column:name"`
-	Model     string    `gorm:"type:enum('default','slim');default:'default';column:model"`
-	CreatedAt time.Time `gorm:"column:created_at"`
-	UpdatedAt time.Time `gorm:"column:updated_at"`
-}
-
-func (Profile) TableName() string {
-	return "profiles"
-}
-
-type ProfileProperty struct {
-	ID         int    `gorm:"primaryKey;autoIncrement;column:id"`
-	ProfileID  string `gorm:"type:varchar(32);column:profile_id;index"`
-	Name       string `gorm:"type:varchar(255);column:name"`
-	Value      string `gorm:"type:text;column:value"`
-	Signature  string `gorm:"type:text;column:signature"`
-	DeleteWhen int64  `gorm:"type:bigint;not null;default:0;column:delete_when"`
-}
-
-func (ProfileProperty) TableName() string {
-	return "profile_properties"
-}
-
-type Token struct {
-	ID                int       `gorm:"primaryKey;autoIncrement;column:id"`
-	AccessToken       string    `gorm:"type:varchar(255);uniqueIndex;column:access_token"`
-	ClientToken       string    `gorm:"type:varchar(255);index:idx_tokens_client_token;column:client_token"`
-	UserID            string    `gorm:"type:varchar(32);column:user_id;index"`
-	SelectedProfileID string    `gorm:"type:varchar(32);column:selected_profile_id;index"`
-	IssuedAt          int64     `gorm:"type:bigint(20);column:issued_at"`
-	ExpiresInDays     int       `gorm:"default:15;column:expires_in_days"`
-	State             string    `gorm:"type:enum('valid','temporarily_invalid','invalid');default:'valid';column:state"`
-	CreatedAt         time.Time `gorm:"column:created_at"`
-}
-
-func (Token) TableName() string {
-	return "tokens"
 }
 
 type OAuth2Client struct {
@@ -148,39 +100,6 @@ type OAuth2RefreshToken struct {
 
 func (OAuth2RefreshToken) TableName() string {
 	return "oauth2_refresh_tokens"
-}
-
-type Session struct {
-	ID        int       `gorm:"primaryKey;autoIncrement;column:id"`
-	ProfileID string    `gorm:"type:varchar(32);column:profile_id;index"`
-	ServerID  string    `gorm:"type:varchar(255);column:server_id;index:idx_sessions_server_id"`
-	IP        string    `gorm:"type:varchar(45);column:ip"`
-	CreatedAt time.Time `gorm:"column:created_at"`
-	ExpiresAt time.Time `gorm:"column:expires_at;index:idx_sessions_expires_at"`
-}
-
-func (Session) TableName() string {
-	return "sessions"
-}
-
-// ProfileKey represents the chat-signing key pair issued to a user for the
-// Minecraft Profile Key feature (POST /minecraftservices/player/certificates).
-// Persisted per user so that the same key pair is reused across sessions, in
-// line with the authlib-injector recommendation to avoid frequent key rotation.
-type ProfileKey struct {
-	ID                 int       `gorm:"primaryKey;autoIncrement;column:id"`
-	UserID             string    `gorm:"type:varchar(32);column:user_id;uniqueIndex:uk_profile_keys_user_id"`
-	PublicKey          string    `gorm:"type:text;column:public_key"`
-	PrivateKey         string    `gorm:"type:text;column:private_key"`
-	PublicKeySignature string    `gorm:"type:text;column:public_key_signature"`
-	ExpiresAt          time.Time `gorm:"column:expires_at;index:idx_profile_keys_expires_at"`
-	RefreshedAfter     time.Time `gorm:"column:refreshed_after"`
-	CreatedAt          time.Time `gorm:"column:created_at"`
-	UpdatedAt          time.Time `gorm:"column:updated_at"`
-}
-
-func (ProfileKey) TableName() string {
-	return "profile_keys"
 }
 
 type WebAuthnCredential struct {

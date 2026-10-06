@@ -59,25 +59,14 @@ func main() {
 
 	redis.Init()
 
-	cleanupCtrl := controllers.NewTokenCleanupController()
-	cleanupCtrl.Start(1 * time.Hour)
-
 	botCleanupCtrl := controllers.NewBotUserCleanupController()
 	botCleanupCtrl.Start(24 * time.Hour)
-
-	sessionCleanupCtrl := controllers.NewSessionCleanupController()
-	sessionCleanupCtrl.Start(24 * time.Hour)
-
-	textureCleanupCtrl := controllers.NewTextureCleanupController()
-	textureCleanupCtrl.Start(1 * time.Hour)
 
 	oauth2CleanupCtrl := controllers.NewOAuth2CleanupController()
 	oauth2CleanupCtrl.Start(24 * time.Hour)
 
 	accountCleanupCtrl := controllers.NewAccountCleanupController()
 	accountCleanupCtrl.Start(5 * 24 * time.Hour)
-
-	controllers.StartMBETimeoutLoop(30 * time.Second)
 
 	r := gin.Default()
 
@@ -115,8 +104,6 @@ func main() {
 	totpCtrl := controllers.NewTOTPController()
 	emailCtrl := controllers.NewEmailVerificationController()
 	keygenCtrl := controllers.NewKeyGenController()
-	textureCtrl := controllers.NewTextureController()
-	yggdrasilCtrl := controllers.NewYggdrasilController()
 	captchaCtrl := controllers.NewCaptchaController()
 	oauth2Ctrl := controllers.NewOAuth2Controller()
 	webauthnCtrl := controllers.NewWebAuthnController()
@@ -148,21 +135,15 @@ func main() {
 		api.POST("/webauthn/2fa/begin", webauthnCtrl.BeginSecondFactor)
 		api.POST("/webauthn/2fa/finish", webauthnCtrl.FinishSecondFactor)
 
-		api.POST("/login", authCtrl.Login)
-		api.POST("/loginbymt", authCtrl.LoginByMT)
 		api.POST("/register", authCtrl.Register)
 		api.POST("/forgot-password", authCtrl.ForgotPassword)
 		api.POST("/reset-password", authCtrl.ResetPassword)
 		api.GET("/logout", authCtrl.Logout)
-		api.POST("/admin/claim-user", authCtrl.ClaimUser)
-		api.POST("/admin/force-bind", authCtrl.ForceBind)
+		api.POST("/internal/verify-credentials", authCtrl.VerifyCredentials)
 		api.POST("/user", userInfoCtrl.GetUser)
 		api.DELETE("/user", userInfoCtrl.DeleteAccount)
 		api.GET("/user/deleted", userInfoCtrl.ListDeletedAccounts)
 		api.POST("/user/lookup", userInfoCtrl.LookupUser)
-		api.POST("/user/declare-email", userInfoCtrl.DeclareEmail)
-		api.POST("/user/mojang-bind-enable", userInfoCtrl.EnableMojangBind)
-		api.POST("/user/mojang-bind-disable", userInfoCtrl.DisableMojangBind)
 
 		api.POST("/user/security/change-email/send-code", userSecurityCtrl.SendChangeEmailCode)
 		api.POST("/user/security/change-email/webauthn-begin", userSecurityCtrl.BeginWebAuthnSudo)
@@ -185,20 +166,12 @@ func main() {
 		api.POST("/totp/toggle", totpCtrl.Toggle2FA)
 
 		api.POST("/change-username", userProfileCtrl.ChangeUsername)
-		api.POST("/change-profile-name", userProfileCtrl.ChangeProfileName)
 
 		api.POST("/generate-key", keygenCtrl.Generate)
-
-		api.POST("/texture/upload", textureCtrl.UploadTexture)
-		api.POST("/texture/delete", textureCtrl.DeleteTexture)
-		api.POST("/texture/rewrite-callback", textureCtrl.RewriteTextureCallbacks)
-		api.GET("/texture/mojang/:uuid", textureCtrl.FetchMojangTexture)
-		api.GET("/mojang/profile/:uuid", textureCtrl.FetchMojangProfile)
 
 		api.POST("/captcha", captchaCtrl.Generate)
 		api.GET("/captcha/enabled", captchaCtrl.Status)
 		api.GET("/captcha/image/:token", captchaCtrl.Image)
-		api.POST("/texture/get", textureCtrl.GetTexture)
 
 		api.POST("/services/presence", presenceCtrl.Bonjour)
 		api.POST("/services/route", routeCtrl.Register)
@@ -209,47 +182,7 @@ func main() {
 		api.GET("/services/list", presenceCtrl.ListFrontendServices)
 	}
 
-	yggdrasil := r.Group("")
-	{
-		yggdrasil.GET("/", yggdrasilCtrl.Meta)
-
-		yggdrasil.POST("/authserver/authenticate", yggdrasilCtrl.Authenticate)
-		yggdrasil.POST("/authserver/refresh", yggdrasilCtrl.Refresh)
-		yggdrasil.POST("/authserver/validate", yggdrasilCtrl.Validate)
-		yggdrasil.POST("/authserver/invalidate", yggdrasilCtrl.Invalidate)
-		yggdrasil.POST("/authserver/signout", yggdrasilCtrl.Signout)
-
-		yggdrasil.POST("/sessionserver/session/minecraft/join", yggdrasilCtrl.Join)
-		yggdrasil.GET("/sessionserver/session/minecraft/hasJoined", yggdrasilCtrl.HasJoined)
-		yggdrasil.GET("/sessionserver/session/minecraft/hasjoined", yggdrasilCtrl.HasJoined)
-		yggdrasil.GET("/sessionserver/session/minecraft/profile/:uuid", yggdrasilCtrl.ProfileQuery)
-
-		yggdrasil.POST("/api/profiles/minecraft", yggdrasilCtrl.BatchProfiles)
-
-		yggdrasil.PUT("/api/user/profile/:uuid/:textureType", yggdrasilCtrl.UploadTexture)
-		yggdrasil.DELETE("/api/user/profile/:uuid/:textureType", yggdrasilCtrl.DeleteTexture)
-
-		yggdrasil.GET("/textures/:hash", yggdrasilCtrl.DownloadTexture)
-
-		yggdrasil.GET("/skins/MinecraftSkins/:username", yggdrasilCtrl.LegacySkin)
-
-		yggdrasil.POST("/minecraftservices/player/certificates", yggdrasilCtrl.PlayerCertificates)
-		yggdrasil.GET("/minecraftservices/publickeys", yggdrasilCtrl.PublicKeys)
-	}
-
 	r.NoRoute(func(c *gin.Context) {
-		path := strings.ToLower(c.Request.URL.Path)
-		if strings.Contains(path, "authserver") ||
-			strings.Contains(path, "sessionserver") ||
-			strings.Contains(path, "/api/") ||
-			strings.Contains(path, "/textures/") {
-			c.JSON(http.StatusNotFound, gin.H{
-				"error":        "Not Found",
-				"errorMessage": "The requested endpoint does not exist.",
-				"cause":        nil,
-			})
-			return
-		}
 		c.JSON(http.StatusNotFound, gin.H{
 			"success": false,
 			"message": "Not Found",

@@ -12,7 +12,6 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/redis"
-	"github.com/lnb/HRPAuth-Backend-Go/utils"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -35,22 +34,11 @@ type UserInfo struct {
 }
 
 func (as *AuthService) VerifyCredentials(identifier, password string, allowUsernameLogin bool) *UserInfo {
-	nonEmailLogin := allowUsernameLogin
-	if !allowUsernameLogin {
-		nonEmailLogin = config.AppConfig.Yggdrasil.FeatureFlags.NonEmailLogin
-	}
-
 	var user models.User
 	var err error
 
-	if nonEmailLogin {
-		err = database.DB.Unscoped().
-			Joins("JOIN profiles ON users.uuid = profiles.user_id").
-			Where("users.email = ? OR profiles.name = ?", identifier, identifier).
-			First(&user).Error
-	} else {
-		err = database.DB.Unscoped().Where("email = ?", identifier).First(&user).Error
-	}
+	// 核心服务仅支持通过 Email 或 Username 登录，不再关联 Minecraft Profile Name
+	err = database.DB.Unscoped().Where("email = ? OR username = ?", identifier, identifier).First(&user).Error
 
 	if err != nil {
 		return nil
@@ -78,73 +66,6 @@ func (as *AuthService) VerifyCredentials(identifier, password string, allowUsern
 	}
 }
 
-type ProfileInfo struct {
-	ID    string `json:"id"`
-	Name  string `json:"name"`
-	Model string `json:"model,omitempty"`
-}
-
-func (as *AuthService) GetUserProfiles(userUUID string) []ProfileInfo {
-	var profiles []models.Profile
-	database.DB.Where("user_id = ?", userUUID).Find(&profiles)
-
-	result := make([]ProfileInfo, 0, len(profiles))
-	for _, p := range profiles {
-		pi := ProfileInfo{
-			ID:   p.ID,
-			Name: p.Name,
-		}
-		if p.Model != "" {
-			pi.Model = p.Model
-		}
-		result = append(result, pi)
-	}
-	return result
-}
-
-func (as *AuthService) CreateDefaultProfileForUserTx(tx *gorm.DB, userUUID, profileName string) (*models.Profile, error) {
-	var count int64
-	if err := tx.Model(&models.Profile{}).Where("user_id = ?", userUUID).Count(&count).Error; err != nil {
-		return nil, err
-	}
-	if count > 0 {
-		return nil, nil
-	}
-
-	profile := models.Profile{
-		ID:     utils.GenerateUnsignedUUID(),
-		UserID: userUUID,
-		Name:   profileName,
-		Model:  "default",
-	}
-	if err := tx.Create(&profile).Error; err != nil {
-		return nil, err
-	}
-	return &profile, nil
-}
-
-func (as *AuthService) CreateDefaultProfileForUser(userUUID, profileName string) (*models.Profile, error) {
-	return as.CreateDefaultProfileForUserTx(database.DB, userUUID, profileName)
-}
-
-// GetOrCreateProfileForUser returns the existing profile for the given user, or
-// creates a new one if none exists. Used by the M.T. (WinnerProxy) /register path
-// where the same user may be looked up repeatedly across idempotent requests.
-func (as *AuthService) GetOrCreateProfileForUser(userUUID, profileName string) (*models.Profile, error) {
-	var profile models.Profile
-	if err := database.DB.Where("user_id = ?", userUUID).First(&profile).Error; err == nil {
-		return &profile, nil
-	}
-	return as.CreateDefaultProfileForUser(userUUID, profileName)
-}
-
-// CleanupInactiveBotUsers removes users that were auto-registered by WinnerProxy
-// (cbh = 0) and have been inactive for 30+ days (both register_at and
-// last_sign_at older than the cutoff). Implements references/HA-ROADMAP.md §4.
-//
-// Returns the number of users successfully deleted. Returns 0 if another
-// cleanup is already running (serialized via botUserCleanupMu). Single-user
-// failures are logged and skipped without interrupting the rest.
 func (as *AuthService) CleanupInactiveBotUsers() int {
 	if !botUserCleanupMu.TryLock() {
 		return 0
@@ -179,34 +100,9 @@ func (as *AuthService) CleanupInactiveBotUsers() int {
 	return deleted
 }
 
-// deleteUserCascade removes a user and all dependent rows in dependency order.
-// sessions/profile_properties are deleted before profiles because they hold
-// profile_id FKs. tokens are deleted by user_id.
+// deleteUserCascade removes a user and all core dependent rows.
 func (as *AuthService) deleteUserCascade(u models.User) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
-		// Collect profile IDs first; needed for sessions + profile_properties.
-		var profileIDs []string
-		if err := tx.Model(&models.Profile{}).
-			Where("user_id = ?", u.UUID).
-			Pluck("id", &profileIDs).Error; err != nil {
-			return err
-		}
-
-		if len(profileIDs) > 0 {
-			if err := tx.Where("profile_id IN ?", profileIDs).Delete(&models.Session{}).Error; err != nil {
-				return err
-			}
-			if err := tx.Where("profile_id IN ?", profileIDs).Delete(&models.ProfileProperty{}).Error; err != nil {
-				return err
-			}
-		}
-
-		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.Profile{}).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.Token{}).Error; err != nil {
-			return err
-		}
 		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.OAuth2AuthorizationCode{}).Error; err != nil {
 			return err
 		}
@@ -216,7 +112,7 @@ func (as *AuthService) deleteUserCascade(u models.User) error {
 		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.OAuth2RefreshToken{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.ProfileKey{}).Error; err != nil {
+		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.WebAuthnCredential{}).Error; err != nil {
 			return err
 		}
 
@@ -238,12 +134,10 @@ func formatCleanupDate(t *time.Time) string {
 }
 
 // CleanupDeletedAccounts 彻底删除标记超过3天的账号及其关联数据。
-// 每5天运行一次，标记删除3天后可被清理（实际波动在3-8天）。
 func (as *AuthService) CleanupDeletedAccounts() int {
 	cutoff := time.Now().Add(-3 * 24 * time.Hour)
 
 	var candidates []models.User
-	// 使用 Unscoped 以查询出已标记删除的用户
 	if err := database.DB.Unscoped().Where("deleted_at IS NOT NULL AND deleted_at < ?", cutoff).Find(&candidates).Error; err != nil {
 		log.Printf("[account-cleanup] failed to query candidates: %v", err)
 		return 0
@@ -266,334 +160,22 @@ func (as *AuthService) CleanupDeletedAccounts() int {
 	return deleted
 }
 
-func (as *AuthService) RenameProfile(userUUID, profileID, newName string) (*models.Profile, error) {
-	var profile models.Profile
-	if err := database.DB.Where("id = ? AND user_id = ?", profileID, userUUID).First(&profile).Error; err != nil {
-		return nil, fmt.Errorf("profile not found")
-	}
-	if profile.Name == newName {
-		return &profile, nil
-	}
-
-	var existing models.Profile
-	if err := database.DB.Where("name = ? AND id != ?", newName, profileID).First(&existing).Error; err == nil {
-		return nil, fmt.Errorf("profile name already exists")
-	}
-
-	if err := database.DB.Model(&profile).Update("name", newName).Error; err != nil {
-		return nil, err
-	}
-
-	profile.Name = newName
-	return &profile, nil
-}
-
-func (as *AuthService) SyncUserAndProfileName(userUUID, profileID, newName string) (*models.User, *models.Profile, error) {
+func (as *AuthService) ChangeUsername(userUUID, newUsername string) error {
 	var user models.User
 	if err := database.DB.Where("uuid = ?", userUUID).First(&user).Error; err != nil {
-		return nil, nil, fmt.Errorf("user not found")
+		return fmt.Errorf("user not found")
 	}
 
-	var profile models.Profile
-	if profileID == "" {
-		if err := database.DB.Where("user_id = ?", userUUID).Order("created_at ASC").First(&profile).Error; err != nil {
-			return nil, nil, fmt.Errorf("profile not found")
-		}
-		profileID = profile.ID
-	} else {
-		if err := database.DB.Where("id = ? AND user_id = ?", profileID, userUUID).First(&profile).Error; err != nil {
-			return nil, nil, fmt.Errorf("profile not found")
-		}
-	}
-
-	if user.Username == newName && profile.Name == newName {
-		return &user, &profile, nil
+	if user.Username == newUsername {
+		return nil
 	}
 
 	var existingUser models.User
-	if err := database.DB.Where("username = ? AND uuid != ?", newName, user.UUID).First(&existingUser).Error; err == nil {
-		return nil, nil, fmt.Errorf("username already exists")
+	if err := database.DB.Where("username = ? AND uuid != ?", newUsername, user.UUID).First(&existingUser).Error; err == nil {
+		return fmt.Errorf("username already exists")
 	}
 
-	var existingProfile models.Profile
-	if err := database.DB.Where("name = ? AND id != ?", newName, profile.ID).First(&existingProfile).Error; err == nil {
-		return nil, nil, fmt.Errorf("profile name already exists")
-	}
-
-	err := database.DB.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Model(&models.User{}).Where("uuid = ?", userUUID).Update("username", newName).Error; err != nil {
-			return err
-		}
-		if err := tx.Model(&models.Profile{}).Where("id = ?", profileID).Update("name", newName).Error; err != nil {
-			return err
-		}
-		return nil
-	})
-	if err != nil {
-		return nil, nil, err
-	}
-
-	user.Username = newName
-	profile.Name = newName
-	return &user, &profile, nil
-}
-
-func (as *AuthService) CreateToken(accessToken, clientToken, userID, profileID string, expiresInDays int) bool {
-	// Per authlib-injector §令牌: cap concurrent valid tokens per user. When
-	// the limit is reached, revoke the oldest still-valid token first so we
-	// stay under the cap before inserting the new one.
-	as.EnforceTokenLimit(userID)
-
-	token := models.Token{
-		AccessToken:       accessToken,
-		ClientToken:       clientToken,
-		UserID:            userID,
-		SelectedProfileID: profileID,
-		IssuedAt:          utils.CurrentTimestampMillis(),
-		ExpiresInDays:     expiresInDays,
-		State:             "valid",
-	}
-	result := database.DB.Create(&token)
-	return result.Error == nil
-}
-
-// EnforceTokenLimit revokes the user's oldest valid tokens until the user
-// holds at most (limit - 1) valid tokens. Called immediately before
-// CreateToken so the new row brings the count up to the limit exactly.
-func (as *AuthService) EnforceTokenLimit(userID string) int64 {
-	limit := config.AppConfig.Yggdrasil.Security.MaxTokensPerUser
-	if limit <= 0 {
-		limit = 10
-	}
-
-	var count int64
-	if err := database.DB.Model(&models.Token{}).
-		Where("user_id = ? AND state = ?", userID, "valid").
-		Count(&count).Error; err != nil {
-		log.Printf("[token-limit] count failed for user=%s: %v", userID, err)
-		return 0
-	}
-	if count < int64(limit) {
-		return 0
-	}
-
-	// We have `count` valid tokens and will add one more, so we must drop
-	// at least (count - limit + 1). Revoke the oldest ones by issued_at
-	// (nulls last so a fresh INSERT without an explicit issued_at stays).
-	toRevoke := count - int64(limit) + 1
-	var oldest []models.Token
-	if err := database.DB.
-		Where("user_id = ? AND state = ?", userID, "valid").
-		Order("issued_at ASC").
-		Limit(int(toRevoke)).
-		Find(&oldest).Error; err != nil {
-		log.Printf("[token-limit] select oldest failed: %v", err)
-		return 0
-	}
-
-	if len(oldest) == 0 {
-		return 0
-	}
-
-	ids := make([]int, 0, len(oldest))
-	for _, t := range oldest {
-		ids = append(ids, t.ID)
-	}
-
-	res := database.DB.Model(&models.Token{}).
-		Where("id IN ? AND state = ?", ids, "valid").
-		Update("state", "invalid")
-	if res.Error != nil {
-		log.Printf("[token-limit] revoke failed: %v", res.Error)
-		return 0
-	}
-	return res.RowsAffected
-}
-
-func (as *AuthService) InvalidateToken(accessToken string) bool {
-	result := database.DB.Model(&models.Token{}).
-		Where("access_token = ?", accessToken).
-		Update("state", "invalid")
-	return result.Error == nil
-}
-
-func (as *AuthService) InvalidateAllUserTokens(userID string) bool {
-	result := database.DB.Model(&models.Token{}).
-		Where("user_id = ? AND state = ?", userID, "valid").
-		Update("state", "invalid")
-	return result.Error == nil
-}
-
-func (as *AuthService) GetValidTokenByClientToken(userID, clientToken string) *models.Token {
-	if clientToken == "" {
-		return nil
-	}
-	var token models.Token
-	result := database.DB.Where("user_id = ? AND client_token = ? AND state = ?",
-		userID, clientToken, "valid").First(&token)
-	if result.Error != nil {
-		return nil
-	}
-	nowMillis := utils.CurrentTimestampMillis()
-	expiryMillis := token.IssuedAt + int64(token.ExpiresInDays)*24*60*60*1000
-	if nowMillis > expiryMillis {
-		as.InvalidateToken(token.AccessToken)
-		return nil
-	}
-	return &token
-}
-
-func (as *AuthService) ValidateToken(accessToken string, clientToken string) *models.Token {
-	var token models.Token
-	result := database.DB.Where("access_token = ? AND state = ?", accessToken, "valid").First(&token)
-	if result.Error != nil {
-		return nil
-	}
-
-	if clientToken != "" && clientToken != token.ClientToken {
-		return nil
-	}
-
-	nowMillis := utils.CurrentTimestampMillis()
-	expiryMillis := token.IssuedAt + int64(token.ExpiresInDays)*24*60*60*1000
-	if nowMillis > expiryMillis {
-		as.InvalidateToken(accessToken)
-		return nil
-	}
-
-	return &token
-}
-
-func (as *AuthService) ValidateTokenForRefresh(accessToken string, clientToken string) *models.Token {
-	var token models.Token
-	result := database.DB.Where("access_token = ? AND state IN ?", accessToken, []string{"valid", "temporarily_invalid"}).
-		First(&token)
-	if result.Error != nil {
-		return nil
-	}
-
-	if clientToken != "" && clientToken != token.ClientToken {
-		return nil
-	}
-
-	nowMillis := utils.CurrentTimestampMillis()
-	expiryMillis := token.IssuedAt + int64(token.ExpiresInDays)*24*60*60*1000
-	if nowMillis > expiryMillis {
-		as.InvalidateToken(accessToken)
-		return nil
-	}
-
-	return &token
-}
-
-func (as *AuthService) RefreshTokenExpiry(accessToken string, expiresInDays int) bool {
-	nowMillis := utils.CurrentTimestampMillis()
-	result := database.DB.Model(&models.Token{}).
-		Where("access_token = ?", accessToken).
-		Updates(map[string]interface{}{
-			"issued_at":       nowMillis,
-			"expires_in_days": expiresInDays,
-		})
-	return result.Error == nil
-}
-
-func (as *AuthService) MarkOtherClientTokensTemporarilyInvalid(userID, currentClientToken string) int64 {
-	result := database.DB.Model(&models.Token{}).
-		Where("user_id = ? AND client_token != ? AND state = ?", userID, currentClientToken, "valid").
-		Update("state", "temporarily_invalid")
-	if result.Error != nil {
-		return 0
-	}
-	return result.RowsAffected
-}
-
-func (as *AuthService) CleanupExpiredTokens() int64 {
-	nowMillis := utils.CurrentTimestampMillis()
-	cutoff := nowMillis - int64(config.AppConfig.Yggdrasil.Security.TokenExpiryDays+1)*24*60*60*1000
-	result := database.DB.Where("state = ? OR issued_at < ?", "invalid", cutoff).
-		Delete(&models.Token{})
-	if result.Error != nil {
-		return 0
-	}
-	return result.RowsAffected
-}
-
-func (as *AuthService) GetProfileByID(profileID string) *ProfileInfo {
-	var profile models.Profile
-	var user models.User
-
-	result := database.DB.Where("id = ?", profileID).First(&profile)
-	if result.Error != nil {
-		return nil
-	}
-
-	database.DB.Where("uuid = ?", profile.UserID).First(&user)
-
-	return &ProfileInfo{
-		ID:    profile.ID,
-		Name:  profile.Name,
-		Model: profile.Model,
-	}
-}
-
-func (as *AuthService) IsProfileOwnedByUser(profileID, userID string) bool {
-	var count int64
-	database.DB.Model(&models.Profile{}).
-		Where("id = ? AND user_id = ?", profileID, userID).
-		Count(&count)
-	return count > 0
-}
-
-func (as *AuthService) CreateSession(profileID, serverID, ip string) bool {
-	var existingSession models.Session
-	result := database.DB.
-		Where("profile_id = ? AND server_id = ?", profileID, serverID).
-		First(&existingSession)
-
-	if result.Error == nil {
-		existingSession.IP = ip
-		existingSession.ExpiresAt = time.Now().Add(time.Duration(config.AppConfig.Yggdrasil.Security.SessionExpirySeconds) * time.Second)
-		return database.DB.Save(&existingSession).Error == nil
-	}
-
-	session := models.Session{
-		ProfileID: profileID,
-		ServerID:  serverID,
-		IP:        ip,
-		ExpiresAt: time.Now().Add(time.Duration(config.AppConfig.Yggdrasil.Security.SessionExpirySeconds) * time.Second),
-	}
-	return database.DB.Create(&session).Error == nil
-}
-
-func (as *AuthService) GetSessionByProfileAndServer(profileName, serverID string) *models.Session {
-	var profile models.Profile
-	database.DB.Where("name = ?", profileName).First(&profile)
-	if profile.ID == "" {
-		return nil
-	}
-
-	var session models.Session
-	result := database.DB.
-		Where("profile_id = ? AND server_id = ?", profile.ID, serverID).
-		First(&session)
-
-	if result.Error != nil {
-		return nil
-	}
-
-	session.ExpiresAt = time.Now().Add(time.Duration(config.AppConfig.Yggdrasil.Security.SessionExpirySeconds) * time.Second)
-	database.DB.Save(&session)
-
-	return &session
-}
-
-func (as *AuthService) CleanupExpiredSessions() int64 {
-	result := database.DB.Where("expires_at < ?", time.Now().Add(-24*time.Hour)).
-		Delete(&models.Session{})
-	if result.Error != nil {
-		return 0
-	}
-	return result.RowsAffected
+	return database.DB.Model(&models.User{}).Where("uuid = ?", userUUID).Update("username", newUsername).Error
 }
 
 func (as *AuthService) IsLoginRateLimited(identifier string) bool {
@@ -646,18 +228,7 @@ func (as *AuthService) GetUserByID(userUUID string) *UserInfo {
 	}
 }
 
-func (as *AuthService) GetProfileByName(name string) *models.Profile {
-	var profile models.Profile
-	result := database.DB.Where("name = ?", name).First(&profile)
-	if result.Error != nil {
-		return nil
-	}
-	return &profile
-}
-
 // IsManageToken reports whether the request is a genuine Manage Token (M-T)
-// request: the caller declared auth_type "manage" AND the token equals the
-// operator-level Manage Token from config.
 func (as *AuthService) IsManageToken(token, authType string) bool {
 	return authType == "manage" && token != "" && config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
 }
