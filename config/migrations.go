@@ -28,6 +28,7 @@ type ConfigMigration struct {
 //   - "5":   yggdrasil.security.max_texture_file_size added (default 512000)
 //   - "6":   top-level storage section with orphan_file_expiry_days (default 7)
 //   - "7":   oauth2.super_client_extra_scopes added for database scope delegation
+//   - "8":   decouple yggdrasil: core_api and yggdrasil_api sections introduced
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
@@ -36,6 +37,7 @@ func configMigrations() []ConfigMigration {
 		{FromVersion: "4", ToVersion: "5", Migrate: migrateV4ToV5},
 		{FromVersion: "5", ToVersion: "6", Migrate: migrateV5ToV6},
 		{FromVersion: "6", ToVersion: "7", Migrate: migrateV6ToV7},
+		{FromVersion: "7", ToVersion: "8", Migrate: migrateV7ToV8},
 	}
 }
 
@@ -338,5 +340,39 @@ func migrateV6ToV7(cfg map[string]interface{}, tokenGen func() string) error {
 	}
 	cfg["oauth2"] = oauth2
 	cfg["version"] = "7"
+	return nil
+}
+
+// migrateV7ToV8 decouples Yggdrasil logic by introducing core_api and yggdrasil_api.
+// It generates internal keys for service-to-service communication.
+func migrateV7ToV8(cfg map[string]interface{}, tokenGen func() string) error {
+	// 1. Initialize core_api section
+	core, _ := cfg["core_api"].(map[string]interface{})
+	if core == nil {
+		core = map[string]interface{}{}
+	}
+	if key, _ := core["internal_key"].(string); key == "" {
+		core["internal_key"] = tokenGen()
+	}
+	cfg["core_api"] = core
+
+	// 2. Initialize yggdrasil_api section
+	yggAPI, _ := cfg["yggdrasil_api"].(map[string]interface{})
+	if yggAPI == nil {
+		yggAPI = map[string]interface{}{}
+	}
+	if url, _ := yggAPI["base_url"].(string); url == "" {
+		yggAPI["base_url"] = "http://localhost:8081" // Default for decoupled service
+	}
+	if key, _ := yggAPI["internal_key"].(string); key == "" {
+		yggAPI["internal_key"] = core["internal_key"].(string) // Share key by default or generate new?
+		// Using the same key for symmetric auth is common in this project's style.
+	}
+	cfg["yggdrasil_api"] = yggAPI
+
+	// Note: We keep the old "yggdrasil" section for now to avoid breaking
+	// external tools that might still read it, but it's logically deprecated.
+
+	cfg["version"] = "8"
 	return nil
 }

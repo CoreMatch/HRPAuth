@@ -189,7 +189,7 @@ type FeatureFlagsConfig struct {
 
 const ConfigFileName = "config.yaml"
 const ConfigFileDir = "./"
-const ConfigVersion = "7"
+const ConfigVersion = "8"
 
 var AppConfig *Config
 
