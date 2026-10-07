@@ -141,14 +141,30 @@ func TestMigrateConfigV1Chain(t *testing.T) {
 		t.Errorf("expected default super_client_id, got %v", oauth2["super_client_id"])
 	}
 
-	// yggdrasil.security keeps only its own fields
-	ygg := out["yggdrasil"].(map[string]interface{})
-	ySec := ygg["security"].(map[string]interface{})
-	if _, ok := ySec["enable_captcha"]; ok {
-		t.Error("enable_captcha should have been removed from yggdrasil.security")
+	if _, ok := out["yggdrasil"]; ok {
+		t.Fatal("yggdrasil section should have been removed by v7->v8")
 	}
-	if ySec["token_expiry_days"] != 7 {
-		t.Errorf("expected yggdrasil.security.token_expiry_days preserved, got %v", ySec["token_expiry_days"])
+	if _, ok := out["storage"]; ok {
+		t.Fatal("storage section should have been removed by v7->v8")
+	}
+
+	coreAPI, ok := out["core_api"].(map[string]interface{})
+	if !ok {
+		t.Fatal("core_api section missing after v7->v8")
+	}
+	if coreAPI["internal_key"] != "test-manage-token" {
+		t.Errorf("expected generated core_api internal_key, got %v", coreAPI["internal_key"])
+	}
+
+	yggAPI, ok := out["yggdrasil_api"].(map[string]interface{})
+	if !ok {
+		t.Fatal("yggdrasil_api section missing after v7->v8")
+	}
+	if yggAPI["base_url"] != "http://localhost:2779" {
+		t.Errorf("expected default yggdrasil_api base_url, got %v", yggAPI["base_url"])
+	}
+	if yggAPI["internal_key"] != "test-manage-token" {
+		t.Errorf("expected yggdrasil_api internal_key copied from core_api, got %v", yggAPI["internal_key"])
 	}
 }
 
@@ -168,12 +184,13 @@ func TestMigrateConfigV2ToV3(t *testing.T) {
 		},
 	}
 
-	out, changed, err := MigrateConfig(cfg, tokenGen)
+	out := cfg
+	err := migrateV2ToV3(out, tokenGen)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !changed {
-		t.Fatal("expected migration to run")
+	if out["version"] != "3" {
+		t.Fatalf("expected version 3 after direct migration, got %v", out["version"])
 	}
 
 	sec := out["security"].(map[string]interface{})
@@ -196,10 +213,6 @@ func TestMigrateConfigV2ToV3(t *testing.T) {
 	if manage["token"] != "test-manage-token" {
 		t.Errorf("expected generated manage token, got %v", manage)
 	}
-	oauth2 := out["oauth2"].(map[string]interface{})
-	if oauth2["public_client_id"] != "hrpauth-webui" {
-		t.Errorf("expected public_client_id default, got %v", oauth2["public_client_id"])
-	}
 }
 
 func TestMigrateV2ToV3PreservesExistingTopLevelSecurity(t *testing.T) {
@@ -219,7 +232,8 @@ func TestMigrateV2ToV3PreservesExistingTopLevelSecurity(t *testing.T) {
 		},
 	}
 
-	out, _, err := MigrateConfig(cfg, tokenGen)
+	out := cfg
+	err := migrateV2ToV3(out, tokenGen)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -246,15 +260,13 @@ func TestMigrateV4ToV5AddsMaxTextureFileSize(t *testing.T) {
 		},
 	}
 
-	out, changed, err := MigrateConfig(cfg, tokenGen)
+	out := cfg
+	err := migrateV4ToV5(out, tokenGen)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !changed {
-		t.Fatal("expected migration to run")
-	}
-	if out["version"] != ConfigVersion {
-		t.Fatalf("expected version %q, got %v", ConfigVersion, out["version"])
+	if out["version"] != "5" {
+		t.Fatalf("expected version 5 after direct migration, got %v", out["version"])
 	}
 
 	ygg := out["yggdrasil"].(map[string]interface{})
@@ -278,12 +290,10 @@ func TestMigrateV4ToV5PreservesExistingFileSize(t *testing.T) {
 		},
 	}
 
-	out, changed, err := MigrateConfig(cfg, tokenGen)
+	out := cfg
+	err := migrateV4ToV5(out, tokenGen)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if !changed {
-		t.Fatal("expected migration to run")
 	}
 
 	ySec := out["yggdrasil"].(map[string]interface{})["security"].(map[string]interface{})
@@ -302,15 +312,13 @@ func TestMigrateV5ToV6AddsOrphanFileExpiryDays(t *testing.T) {
 		},
 	}
 
-	out, changed, err := MigrateConfig(cfg, tokenGen)
+	out := cfg
+	err := migrateV5ToV6(out, tokenGen)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !changed {
-		t.Fatal("expected migration to run")
-	}
-	if out["version"] != ConfigVersion {
-		t.Fatalf("expected version %q, got %v", ConfigVersion, out["version"])
+	if out["version"] != "6" {
+		t.Fatalf("expected version 6 after direct migration, got %v", out["version"])
 	}
 
 	storage, ok := out["storage"].(map[string]interface{})
@@ -330,12 +338,10 @@ func TestMigrateV5ToV6PreservesExistingOrphanFileExpiryDays(t *testing.T) {
 		},
 	}
 
-	out, changed, err := MigrateConfig(cfg, tokenGen)
+	out := cfg
+	err := migrateV5ToV6(out, tokenGen)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if !changed {
-		t.Fatal("expected migration to run")
 	}
 
 	storage := out["storage"].(map[string]interface{})
@@ -365,15 +371,22 @@ func TestMigrateV1ChainToV6(t *testing.T) {
 		},
 	}
 
-	out, changed, err := MigrateConfig(cfg, tokenGen)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	out := cfg
+	steps := []func(map[string]interface{}, func() string) error{
+		migrateV1ToV2,
+		migrateV2ToV3,
+		migrateV3ToV4,
+		migrateV4ToV5,
+		migrateV5ToV6,
+		migrateV6ToV7,
 	}
-	if !changed {
-		t.Fatal("expected chain migration to run")
+	for _, step := range steps {
+		if err := step(out, tokenGen); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
 	}
-	if out["version"] != ConfigVersion {
-		t.Fatalf("expected final version %q, got %v", ConfigVersion, out["version"])
+	if out["version"] != "7" {
+		t.Fatalf("expected version 7 after direct chain, got %v", out["version"])
 	}
 
 	// v6: storage section with default orphan_file_expiry_days
@@ -404,15 +417,13 @@ func TestMigrateV6ToV7AddsSuperClientExtraScopes(t *testing.T) {
 		},
 	}
 
-	out, changed, err := MigrateConfig(cfg, tokenGen)
+	out := cfg
+	err := migrateV6ToV7(out, tokenGen)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if !changed {
-		t.Fatal("expected migration to run")
-	}
-	if out["version"] != ConfigVersion {
-		t.Fatalf("expected version %q, got %v", ConfigVersion, out["version"])
+	if out["version"] != "7" {
+		t.Fatalf("expected version 7 after direct migration, got %v", out["version"])
 	}
 
 	oauth2, ok := out["oauth2"].(map[string]interface{})
@@ -432,12 +443,10 @@ func TestMigrateV6ToV7PreservesExistingExtraScopes(t *testing.T) {
 		},
 	}
 
-	out, changed, err := MigrateConfig(cfg, tokenGen)
+	out := cfg
+	err := migrateV6ToV7(out, tokenGen)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if !changed {
-		t.Fatal("expected migration to run")
 	}
 
 	oauth2 := out["oauth2"].(map[string]interface{})
@@ -447,5 +456,51 @@ func TestMigrateV6ToV7PreservesExistingExtraScopes(t *testing.T) {
 	}
 	if len(scopes) != 2 {
 		t.Errorf("expected 2 existing scopes preserved, got %d", len(scopes))
+	}
+}
+
+func TestMigrateV7ToV8DecouplesYggdrasilConfig(t *testing.T) {
+	cfg := map[string]interface{}{
+		"version":  "7",
+		"core_api": map[string]interface{}{},
+		"storage": map[string]interface{}{
+			"orphan_file_expiry_days": 7,
+		},
+		"yggdrasil": map[string]interface{}{
+			"security": map[string]interface{}{
+				"token_expiry_days": 15,
+			},
+		},
+	}
+
+	out := cfg
+	if err := migrateV7ToV8(out, tokenGen); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if out["version"] != "8" {
+		t.Fatalf("expected version 8 after direct migration, got %v", out["version"])
+	}
+	if _, ok := out["yggdrasil"]; ok {
+		t.Fatal("yggdrasil section should be removed")
+	}
+	if _, ok := out["storage"]; ok {
+		t.Fatal("storage section should be removed")
+	}
+
+	coreAPI := out["core_api"].(map[string]interface{})
+	if coreAPI["internal_key"] != "test-manage-token" {
+		t.Errorf("expected generated core_api internal_key, got %v", coreAPI["internal_key"])
+	}
+
+	yggAPI, ok := out["yggdrasil_api"].(map[string]interface{})
+	if !ok {
+		t.Fatal("yggdrasil_api section missing after migration")
+	}
+	if yggAPI["base_url"] != "http://localhost:2779" {
+		t.Errorf("expected default yggdrasil_api base_url, got %v", yggAPI["base_url"])
+	}
+	if yggAPI["internal_key"] != "test-manage-token" {
+		t.Errorf("expected yggdrasil_api internal_key copied from core_api, got %v", yggAPI["internal_key"])
 	}
 }

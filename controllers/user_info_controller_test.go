@@ -4,19 +4,14 @@ import (
 	"testing"
 )
 
-func TestNormalizeDeclaredEmail(t *testing.T) {
-	normalized, err := normalizeDeclaredEmail("  User@Example.COM  ")
-	if err != nil {
-		t.Fatalf("normalizeDeclaredEmail returned error: %v", err)
-	}
-	if normalized != "user@example.com" {
-		t.Fatalf("expected normalized email to be lower-cased, got %q", normalized)
+func TestIsValidEmailAcceptsRFCStyleAddress(t *testing.T) {
+	if !isValidEmail("User.Name+tag@example.com") {
+		t.Fatal("expected valid address to pass validation")
 	}
 }
 
-func TestNormalizeDeclaredEmailRejectsInvalid(t *testing.T) {
-	_, err := normalizeDeclaredEmail("not-an-email")
-	if err == nil {
+func TestIsValidEmailRejectsInvalidAddress(t *testing.T) {
+	if isValidEmail("not-an-email") {
 		t.Fatal("expected invalid email to be rejected")
 	}
 }
