@@ -19,7 +19,6 @@ type Config struct {
 	OAuth2           OAuth2Config
 	Callback         CallbackConfig
 	Frontend         FrontendConfig
-	KeyGen           KeyGenConfig
 	Database         DatabaseConfig
 	VerificationCode VerificationCodeConfig
 	Redis            RedisConfig
@@ -27,8 +26,6 @@ type Config struct {
 	Manage           ManageConfig
 	CoreAPI          CoreAPIConfig
 	YggdrasilAPI     YggdrasilAPIConfig
-	Yggdrasil        YggdrasilConfig
-	Storage          StorageConfig
 }
 
 type CoreAPIConfig struct {
@@ -48,10 +45,6 @@ func parseYggdrasilAPIConfig(config map[string]interface{}) YggdrasilAPIConfig {
 	}
 }
 
-type StorageConfig struct {
-	OrphanFileExpiryDays int
-}
-
 type ServerRuntimeConfig struct {
 	Port       string
 	CORSOrigin string
@@ -69,10 +62,6 @@ type CallbackConfig struct {
 
 type FrontendConfig struct {
 	URL string
-}
-
-type KeyGenConfig struct {
-	Enable int
 }
 
 type DatabaseConfig struct {
@@ -113,32 +102,7 @@ type ManageConfig struct {
 	Token string
 }
 
-type YggdrasilConfig struct {
-	Server       ServerConfig
-	Security     YggdrasilSecurityConfig
-	FeatureFlags FeatureFlagsConfig
-}
-
-type ServerConfig struct {
-	Name                    string
-	Implementation          string
-	Version                 string
-	Links                   LinksConfig
-	SkinDomains             []string
-	SignaturePublicKeyPath  string
-	SignaturePrivateKeyPath string
-	SignaturePublicKey      string
-	SignaturePrivateKey     string
-	TexturesStorage         string
-}
-
-type LinksConfig struct {
-	Homepage string
-	Register string
-}
-
 // SecurityConfig is the HRPAuth-specific security settings (registration/login UX).
-// All Yggdrasil-protocol-related security settings live in YggdrasilSecurityConfig.
 type SecurityConfig struct {
 	PasswordCost         int
 	RateLimitMaxAttempts int
@@ -164,27 +128,6 @@ type OAuth2Config struct {
 	SuperClientExtraScopes []string
 	PublicClientID         string
 	PublicRedirectURIs     []string
-}
-
-// YggdrasilSecurityConfig is the Yggdrasil-protocol-related security settings
-// (auth flow durations, texture limits). No HRPAuth-specific fields allowed here.
-type YggdrasilSecurityConfig struct {
-	TokenExpiryDays      int
-	SessionExpirySeconds int
-	MaxTextureWidth      int
-	MaxTextureHeight     int
-	MaxTextureFileSize   int64
-	MaxTokensPerUser     int
-}
-
-type FeatureFlagsConfig struct {
-	NonEmailLogin            bool
-	LegacySkinAPI            bool
-	NoMojangNamespace        bool
-	EnableMojangAntiFeatures bool
-	EnableProfileKey         bool
-	UsernameCheck            bool
-	EnableIPCheck            bool
 }
 
 const ConfigFileName = "config.yaml"
@@ -227,7 +170,6 @@ func Load() {
 		OAuth2:           parseOAuth2Config(yamlConfig),
 		Callback:         parseCallbackConfig(yamlConfig),
 		Frontend:         parseFrontendConfig(yamlConfig),
-		KeyGen:           parseKeyGenConfig(yamlConfig),
 		Database:         parseDatabaseConfig(yamlConfig),
 		VerificationCode: parseVerificationCodeConfig(yamlConfig),
 		Redis:            parseRedisConfig(yamlConfig),
@@ -235,8 +177,6 @@ func Load() {
 		Manage:           parseManageConfig(yamlConfig),
 		CoreAPI:          parseCoreAPIConfig(yamlConfig),
 		YggdrasilAPI:     parseYggdrasilAPIConfig(yamlConfig),
-		Yggdrasil:        parseYggdrasilConfig(yamlConfig),
-		Storage:          parseStorageConfig(yamlConfig),
 	}
 
 	log.Println("Configuration loaded successfully")
@@ -277,13 +217,6 @@ func parseFrontendConfig(config map[string]interface{}) FrontendConfig {
 	frontend, _ := config["frontend"].(map[string]interface{})
 	return FrontendConfig{
 		URL: getString(frontend, "url"),
-	}
-}
-
-func parseKeyGenConfig(config map[string]interface{}) KeyGenConfig {
-	keygen, _ := config["keygen"].(map[string]interface{})
-	return KeyGenConfig{
-		Enable: getInt(keygen, "enable"),
 	}
 }
 
@@ -334,17 +267,6 @@ func parseManageConfig(config map[string]interface{}) ManageConfig {
 	manage, _ := config["manage"].(map[string]interface{})
 	return ManageConfig{
 		Token: getString(manage, "token"),
-	}
-}
-
-func parseStorageConfig(config map[string]interface{}) StorageConfig {
-	storage, _ := config["storage"].(map[string]interface{})
-	orphanExpiryDays := getInt(storage, "orphan_file_expiry_days")
-	if orphanExpiryDays == 0 {
-		orphanExpiryDays = 7
-	}
-	return StorageConfig{
-		OrphanFileExpiryDays: orphanExpiryDays,
 	}
 }
 
@@ -423,68 +345,6 @@ func parseOAuth2Config(config map[string]interface{}) OAuth2Config {
 	}
 }
 
-func parseYggdrasilConfig(config map[string]interface{}) YggdrasilConfig {
-	yggdrasil, _ := config["yggdrasil"].(map[string]interface{})
-	return YggdrasilConfig{
-		Server:       parseServerConfig(yggdrasil),
-		Security:     parseYggdrasilSecurityConfig(yggdrasil),
-		FeatureFlags: parseFeatureFlagsConfig(yggdrasil),
-	}
-}
-
-func parseServerConfig(config map[string]interface{}) ServerConfig {
-	server, _ := config["server"].(map[string]interface{})
-	links, _ := server["links"].(map[string]interface{})
-	skinDomains, _ := server["skin_domains"].([]interface{})
-
-	var skinDomainsStr []string
-	for _, domain := range skinDomains {
-		if str, ok := domain.(string); ok {
-			skinDomainsStr = append(skinDomainsStr, str)
-		}
-	}
-
-	texturesStorage := getString(server, "textures_storage")
-	if texturesStorage == "" {
-		texturesStorage = "./"
-	}
-
-	publicKeyPath := getString(server, "signature_public_key_path")
-	privateKeyPath := getString(server, "signature_private_key_path")
-
-	var publicKey, privateKey string
-	if publicKeyPath != "" {
-		if data, err := os.ReadFile(publicKeyPath); err == nil {
-			publicKey = string(data)
-		} else {
-			log.Printf("Warning: Failed to read public key file %s: %v", publicKeyPath, err)
-		}
-	}
-	if privateKeyPath != "" {
-		if data, err := os.ReadFile(privateKeyPath); err == nil {
-			privateKey = string(data)
-		} else {
-			log.Printf("Warning: Failed to read private key file %s: %v", privateKeyPath, err)
-		}
-	}
-
-	return ServerConfig{
-		Name:                    getString(server, "name"),
-		Implementation:          getString(server, "implementation"),
-		Version:                 getString(server, "version"),
-		SignaturePublicKeyPath:  publicKeyPath,
-		SignaturePrivateKeyPath: privateKeyPath,
-		SignaturePublicKey:      publicKey,
-		SignaturePrivateKey:     privateKey,
-		Links: LinksConfig{
-			Homepage: getString(links, "homepage"),
-			Register: getString(links, "register"),
-		},
-		SkinDomains:     skinDomainsStr,
-		TexturesStorage: texturesStorage,
-	}
-}
-
 // parseSecurityConfig parses the top-level `security` section (HRPAuth-specific).
 func parseSecurityConfig(config map[string]interface{}) SecurityConfig {
 	security, _ := config["security"].(map[string]interface{})
@@ -506,52 +366,6 @@ func parseSecurityConfig(config map[string]interface{}) SecurityConfig {
 		RateLimitWindowSec:   windowSec,
 		EnableCaptcha:        getBool(security, "enable_captcha"),
 		CaptchaTTL:           captchaTTL,
-	}
-}
-
-// parseYggdrasilSecurityConfig parses the `yggdrasil.security` section (Yggdrasil protocol only).
-func parseYggdrasilSecurityConfig(yggdrasilConfig map[string]interface{}) YggdrasilSecurityConfig {
-	security, _ := yggdrasilConfig["security"].(map[string]interface{})
-	maxTextureWidth := getInt(security, "max_texture_width")
-	if maxTextureWidth == 0 {
-		maxTextureWidth = 1024
-	}
-	maxTextureHeight := getInt(security, "max_texture_height")
-	if maxTextureHeight == 0 {
-		maxTextureHeight = 1024
-	}
-	sessionExpirySeconds := getInt(security, "session_expiry_seconds")
-	if sessionExpirySeconds == 0 {
-		sessionExpirySeconds = 28800
-	}
-	maxTokensPerUser := getInt(security, "max_tokens_per_user")
-	if maxTokensPerUser == 0 {
-		maxTokensPerUser = 10
-	}
-	maxTextureFileSize := int64(getInt(security, "max_texture_file_size"))
-	if maxTextureFileSize == 0 {
-		maxTextureFileSize = 512000
-	}
-	return YggdrasilSecurityConfig{
-		TokenExpiryDays:      getInt(security, "token_expiry_days"),
-		SessionExpirySeconds: sessionExpirySeconds,
-		MaxTextureWidth:      maxTextureWidth,
-		MaxTextureHeight:     maxTextureHeight,
-		MaxTextureFileSize:   maxTextureFileSize,
-		MaxTokensPerUser:     maxTokensPerUser,
-	}
-}
-
-func parseFeatureFlagsConfig(config map[string]interface{}) FeatureFlagsConfig {
-	featureFlags, _ := config["feature_flags"].(map[string]interface{})
-	return FeatureFlagsConfig{
-		NonEmailLogin:            getBool(featureFlags, "non_email_login"),
-		LegacySkinAPI:            getBool(featureFlags, "legacy_skin_api"),
-		NoMojangNamespace:        getBool(featureFlags, "no_mojang_namespace"),
-		EnableMojangAntiFeatures: getBool(featureFlags, "enable_mojang_anti_features"),
-		EnableProfileKey:         getBool(featureFlags, "enable_profile_key"),
-		UsernameCheck:            getBool(featureFlags, "username_check"),
-		EnableIPCheck:            getBool(featureFlags, "enable_ip_check"),
 	}
 }
 

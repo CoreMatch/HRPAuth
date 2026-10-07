@@ -362,16 +362,17 @@ func migrateV7ToV8(cfg map[string]interface{}, tokenGen func() string) error {
 		yggAPI = map[string]interface{}{}
 	}
 	if url, _ := yggAPI["base_url"].(string); url == "" {
-		yggAPI["base_url"] = "http://localhost:8081" // Default for decoupled service
+		yggAPI["base_url"] = "http://localhost:2779" // Default for decoupled service
 	}
 	if key, _ := yggAPI["internal_key"].(string); key == "" {
-		yggAPI["internal_key"] = core["internal_key"].(string) // Share key by default or generate new?
-		// Using the same key for symmetric auth is common in this project's style.
+		yggAPI["internal_key"] = core["internal_key"].(string)
 	}
 	cfg["yggdrasil_api"] = yggAPI
 
-	// Note: We keep the old "yggdrasil" section for now to avoid breaking
-	// external tools that might still read it, but it's logically deprecated.
+	// 3. Cleanup deprecated sections
+	delete(cfg, "yggdrasil")
+	delete(cfg, "storage")
+	delete(cfg, "keygen")
 
 	cfg["version"] = "8"
 	return nil

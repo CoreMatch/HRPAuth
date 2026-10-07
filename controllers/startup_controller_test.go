@@ -50,8 +50,8 @@ yggdrasil:
 		t.Fatalf("failed to parse migrated config: %v", err)
 	}
 
-	if cfg["version"] != "7" {
-		t.Fatalf("expected version 7 after migration, got %v", cfg["version"])
+	if cfg["version"] != "8" {
+		t.Fatalf("expected version 8 after migration, got %v", cfg["version"])
 	}
 	sec, ok := cfg["security"].(map[string]interface{})
 	if !ok {
@@ -73,6 +73,26 @@ yggdrasil:
 	}
 	if oauth2["super_client_id"] != "hrpauth-internal-super" {
 		t.Errorf("expected default super_client_id, got %v", oauth2["super_client_id"])
+	}
+
+	// Verify Yggdrasil-API section
+	yggAPI, ok := cfg["yggdrasil_api"].(map[string]interface{})
+	if !ok {
+		t.Fatal("yggdrasil_api section missing after migration")
+	}
+	if yggAPI["base_url"] != "http://localhost:2779" {
+		t.Errorf("expected default yggdrasil_api base_url, got %v", yggAPI["base_url"])
+	}
+
+	// Verify cleanup
+	if _, exists := cfg["yggdrasil"]; exists {
+		t.Error("deprecated yggdrasil section still exists")
+	}
+	if _, exists := cfg["storage"]; exists {
+		t.Error("deprecated storage section still exists")
+	}
+	if _, exists := cfg["keygen"]; exists {
+		t.Error("deprecated keygen section still exists")
 	}
 
 	// Backup of the original file must exist.

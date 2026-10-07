@@ -100,7 +100,6 @@ func main() {
 	userProfileCtrl := controllers.NewUserProfileController()
 	totpCtrl := controllers.NewTOTPController()
 	emailCtrl := controllers.NewEmailVerificationController()
-	keygenCtrl := controllers.NewKeyGenController()
 	captchaCtrl := controllers.NewCaptchaController()
 	oauth2Ctrl := controllers.NewOAuth2Controller()
 	webauthnCtrl := controllers.NewWebAuthnController()
@@ -163,8 +162,6 @@ func main() {
 		api.POST("/totp/toggle", totpCtrl.Toggle2FA)
 
 		api.POST("/change-username", userProfileCtrl.ChangeUsername)
-
-		api.POST("/generate-key", keygenCtrl.Generate)
 
 		api.POST("/captcha", captchaCtrl.Generate)
 		api.GET("/captcha/enabled", captchaCtrl.Status)

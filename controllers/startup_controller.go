@@ -1,11 +1,7 @@
 package controllers
 
 import (
-	"crypto/rand"
-	"crypto/rsa"
-	"crypto/x509"
 	"database/sql"
-	"encoding/pem"
 	"errors"
 	"fmt"
 	"log"
@@ -52,13 +48,13 @@ func (sc *StartupController) InitializeConfig() error {
 	return nil
 }
 
-func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath string) map[string]interface{} {
+func (sc *StartupController) buildDefaultConfig() map[string]interface{} {
 	frontendURL := "https://auth.mcnb.dev/"
 	return map[string]interface{}{
 		"version": config.ConfigVersion,
 		"site": map[string]interface{}{
 			"name":           "HRPAuth",
-			"implementation": "HRPAuth zggdrasil-api service",
+			"implementation": "HRPAuth core service",
 			"version":        "62526",
 		},
 		"server": map[string]interface{}{
@@ -133,54 +129,21 @@ func (sc *StartupController) buildDefaultConfig(publicKeyPath, privateKeyPath st
 				frontendURL + "oauth/callback",
 			},
 		},
-		"yggdrasil": map[string]interface{}{
-			"server": map[string]interface{}{
-				"name":                       "HRPAuth",
-				"implementation":             "HRPAuth zggdrasil-api service",
-				"version":                    "5526",
-				"signature_public_key_path":  publicKeyPath,
-				"signature_private_key_path": privateKeyPath,
-				"textures_storage":           "./",
-				"links": map[string]interface{}{
-					"homepage": "",
-					"register": "",
-				},
-				"skin_domains": []string{},
-			},
-			"security": map[string]interface{}{
-				"token_expiry_days":      15,
-				"session_expiry_seconds": 28800,
-				"max_texture_width":      1024,
-				"max_texture_height":     1024,
-				"max_tokens_per_user":    10,
-			},
-			"feature_flags": map[string]interface{}{
-				"non_email_login":             true,
-				"legacy_skin_api":             true,
-				"no_mojang_namespace":         false,
-				"enable_mojang_anti_features": false,
-				"enable_profile_key":          false,
-				"username_check":              true,
-			},
+		"core_api": map[string]interface{}{
+			"internal_key": utils.GenerateRandomToken(32),
+		},
+		"yggdrasil_api": map[string]interface{}{
+			"base_url":     "http://localhost:2779",
+			"internal_key": utils.GenerateRandomToken(32),
+		},
+		"storage": map[string]interface{}{
+			"orphan_file_expiry_days": 7,
 		},
 	}
 }
 
 func (sc *StartupController) createDefaultConfig(path string) error {
-	cfgDir := filepath.Dir(path)
-
-	publicKeyPath := filepath.Join(cfgDir, "public_key.pem")
-	privateKeyPath := filepath.Join(cfgDir, "private_key.pem")
-
-	if err := sc.generateKeyPair(publicKeyPath, privateKeyPath); err != nil {
-		log.Printf("Warning: Failed to generate RSA key pair: %v", err)
-		log.Printf("Falling back to pseudo-random keys...")
-		if err := sc.generatePseudoKeys(publicKeyPath, privateKeyPath); err != nil {
-			log.Printf("Warning: Failed to generate pseudo keys: %v", err)
-		}
-	}
-
-	defaultConfig := sc.buildDefaultConfig(publicKeyPath, privateKeyPath)
+	defaultConfig := sc.buildDefaultConfig()
 
 	data, err := yaml.Marshal(defaultConfig)
 	if err != nil {
@@ -192,7 +155,6 @@ func (sc *StartupController) createDefaultConfig(path string) error {
 	}
 
 	log.Printf("Default config file created at %s", path)
-	log.Printf("Key pair generated at %s and %s", publicKeyPath, privateKeyPath)
 	log.Printf("Please edit the configuration file and restart the application")
 	return nil
 }
@@ -240,33 +202,6 @@ func (sc *StartupController) checkAndMigrateConfig(path string) error {
 		return nil
 	}
 
-	// Preserve existing key paths if present; otherwise generate a new key pair
-	// and record the paths in the migrated config.
-	cfgDir := filepath.Dir(path)
-	publicKeyPath := filepath.Join(cfgDir, "public_key.pem")
-	privateKeyPath := filepath.Join(cfgDir, "private_key.pem")
-
-	existingPubPath, existingPrivPath := sc.getExistingKeyPaths(migrated)
-	if existingPubPath != "" && existingPrivPath != "" {
-		publicKeyPath = existingPubPath
-		privateKeyPath = existingPrivPath
-	} else {
-		log.Printf("Signature key paths missing in config, generating new key pair...")
-		if err := sc.generateKeyPair(publicKeyPath, privateKeyPath); err != nil {
-			log.Printf("Warning: Failed to generate RSA key pair: %v", err)
-			log.Printf("Falling back to pseudo-random keys...")
-			if err := sc.generatePseudoKeys(publicKeyPath, privateKeyPath); err != nil {
-				log.Printf("Warning: Failed to generate pseudo keys: %v", err)
-			}
-		}
-		if ygg, ok := migrated["yggdrasil"].(map[string]interface{}); ok {
-			if serverCfg, ok := ygg["server"].(map[string]interface{}); ok {
-				serverCfg["signature_public_key_path"] = publicKeyPath
-				serverCfg["signature_private_key_path"] = privateKeyPath
-			}
-		}
-	}
-
 	data, err = yaml.Marshal(migrated)
 	if err != nil {
 		return fmt.Errorf("failed to marshal migrated config: %v", err)
@@ -286,78 +221,11 @@ func (sc *StartupController) checkAndMigrateConfig(path string) error {
 	return nil
 }
 
-// getExistingKeyPaths extracts the signature key paths from a raw config map.
-func (sc *StartupController) getExistingKeyPaths(cfg map[string]interface{}) (string, string) {
-	yggdrasil, _ := cfg["yggdrasil"].(map[string]interface{})
-	serverCfg, _ := yggdrasil["server"].(map[string]interface{})
-	pubPath, _ := serverCfg["signature_public_key_path"].(string)
-	privPath, _ := serverCfg["signature_private_key_path"].(string)
-	return pubPath, privPath
-}
-
-func (sc *StartupController) generateKeyPair(publicKeyPath, privateKeyPath string) error {
-	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
-	if err != nil {
-		return fmt.Errorf("failed to generate RSA private key: %v", err)
-	}
-
-	privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
-	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "RSA PRIVATE KEY",
-		Bytes: privateKeyBytes,
-	})
-
-	if err := os.WriteFile(privateKeyPath, privateKeyPEM, 0600); err != nil {
-		return fmt.Errorf("failed to write private key file: %v", err)
-	}
-
-	publicKeyBytes, err := x509.MarshalPKIXPublicKey(&privateKey.PublicKey)
-	if err != nil {
-		return fmt.Errorf("failed to marshal public key: %v", err)
-	}
-	publicKeyPEM := pem.EncodeToMemory(&pem.Block{
-		Type:  "PUBLIC KEY",
-		Bytes: publicKeyBytes,
-	})
-
-	if err := os.WriteFile(publicKeyPath, publicKeyPEM, 0644); err != nil {
-		return fmt.Errorf("failed to write public key file: %v", err)
-	}
-
-	return nil
-}
-
-func (sc *StartupController) generatePseudoKeys(publicKeyPath, privateKeyPath string) error {
-	publicPseudo := sc.generateRandomString(512)
-	privatePseudo := sc.generateRandomString(1024)
-
-	publicKeyContent := fmt.Sprintf("-----BEGIN PUBLIC KEY-----\n%s\n-----END PUBLIC KEY-----\n", publicPseudo)
-	privateKeyContent := fmt.Sprintf("-----BEGIN RSA PRIVATE KEY-----\n%s\n-----END RSA PRIVATE KEY-----\n", privatePseudo)
-
-	if err := os.WriteFile(publicKeyPath, []byte(publicKeyContent), 0644); err != nil {
-		return fmt.Errorf("failed to write pseudo public key file: %v", err)
-	}
-	if err := os.WriteFile(privateKeyPath, []byte(privateKeyContent), 0600); err != nil {
-		return fmt.Errorf("failed to write pseudo private key file: %v", err)
-	}
-
-	return nil
-}
-
 // generateManageToken produces a random 32-byte (64 hex chars) Manage Token.
 // It is generated once at config-file creation time and persisted to
 // config.yaml under `manage.token`.
 func (sc *StartupController) generateManageToken() string {
 	return utils.GenerateRandomToken(32)
-}
-
-func (sc *StartupController) generateRandomString(length int) string {
-	const charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/="
-	b := make([]byte, length)
-	for i := range b {
-		b[i] = charset[i%len(charset)]
-	}
-	return string(b)
 }
 
 // EnsureMigrations runs all pending database migrations via golang-migrate.
