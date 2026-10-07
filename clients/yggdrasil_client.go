@@ -123,3 +123,35 @@ func (c *YggdrasilClient) DeleteAccount(coreUserID string) error {
 
 	return nil
 }
+
+func (c *YggdrasilClient) InvalidateTokens(coreUserID string) error {
+        if c.BaseURL == "" {
+                return nil
+        }
+
+        url := fmt.Sprintf("%s/internal/invalidate-tokens", c.BaseURL)
+        body := map[string]string{
+                "core_user_id": coreUserID,
+        }
+
+        jsonBody, _ := json.Marshal(body)
+        req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+        if err != nil {
+                return err
+        }
+
+        req.Header.Set("Content-Type", "application/json")
+        req.Header.Set("X-Internal-Key", c.InternalKey)
+
+        resp, err := c.HTTPClient.Do(req)
+        if err != nil {
+                return err
+        }
+        defer resp.Body.Close()
+
+        if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusNotFound {
+                return fmt.Errorf("yggdrasil api returned status %d", resp.StatusCode)
+        }
+
+        return nil
+}

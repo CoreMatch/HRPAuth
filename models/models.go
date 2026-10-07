@@ -19,6 +19,7 @@ type User struct {
 	RegIP              string     `gorm:"type:varchar(40);column:regip"`
 	TOTP               string     `gorm:"type:varchar(32);column:totp"`
 	TwoFA              bool       `gorm:"type:tinyint(1);not null;default:0;column:2FA"`
+        WebAuthn2FAEnabled bool       `gorm:"type:tinyint(1);not null;default:0;column:webauthn_2fa_enabled"`
 	Email2FAEnabled    bool       `gorm:"type:tinyint(1);not null;default:0;column:email_2fa_enabled"`
 	RecoveryKey        string     `gorm:"type:varchar(255);column:recovery_key"`
 	RecoveryKeyEnabled bool       `gorm:"type:tinyint(1);not null;default:0;column:recovery_key_enabled"`

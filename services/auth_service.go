@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"strconv"
-	"sync"
 	"time"
 
 	"github.com/lnb/HRPAuth-Backend-Go/clients"
@@ -16,10 +15,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
-
-// botUserCleanupMu serializes CleanupInactiveBotUsers across all AuthService
-// instances so the 24h loop and per-request M.T. triggers don't race.
-var botUserCleanupMu sync.Mutex
 
 type AuthService struct {
 	yggClient *clients.YggdrasilClient
@@ -97,9 +92,6 @@ func (as *AuthService) deleteUserCascade(u models.User) error {
 			return err
 		}
 
-		// Notify Yggdrasil API to delete game account
-		go as.yggClient.DeleteAccount(u.UUID)
-
 		return nil
 	})
 }
@@ -123,6 +115,10 @@ func (as *AuthService) CleanupDeletedAccounts() int {
 
 	deleted := 0
 	for _, u := range candidates {
+                  if err := as.yggClient.DeleteAccount(u.UUID); err != nil {
+                          log.Printf("[account-cleanup] failed to delete Yggdrasil account for uid=%d username=%s: %v", u.UID, u.Username, err)
+                          continue
+                  }
 		if err := as.deleteUserCascade(u); err != nil {
 			log.Printf("[account-cleanup] ERROR hard deleting uid=%d username=%s: %v", u.UID, u.Username, err)
 			continue
@@ -153,12 +149,16 @@ func (as *AuthService) ChangeUsername(userUUID, newUsername string) error {
 		return fmt.Errorf("username already exists")
 	}
 
-	if err := database.DB.Model(&models.User{}).Where("uuid = ?", user.UUID).Update("username", newUsername).Error; err != nil {
+          if err := database.DB.Model(&models.User{}).Where("uuid = ?", user.UUID).Update("username", newUsername).Error; err != nil {
 		return err
 	}
 
-	// Sync to Yggdrasil API
-	go as.yggClient.SyncUsername(user.UUID, newUsername)
+          if err := as.yggClient.SyncUsername(user.UUID, newUsername); err != nil {
+                  if revertErr := database.DB.Model(&models.User{}).Where("uuid = ?", user.UUID).Update("username", user.Username).Error; revertErr != nil {
+                          return fmt.Errorf("failed to sync username to yggdrasil api: %v (revert failed: %v)", err, revertErr)
+                  }
+                  return fmt.Errorf("failed to sync username to yggdrasil api: %v", err)
+          }
 
 	return nil
 }

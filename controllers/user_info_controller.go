@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+        "github.com/lnb/HRPAuth-Backend-Go/clients"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/utils"
@@ -137,6 +138,11 @@ func (uc *UserInfoController) DeleteAccount(c *gin.Context) {
 		respondError(c, http.StatusForbidden, CodeInvalidCredentials, "密码错误")
 		return
 	}
+
+        if err := clients.NewYggdrasilClient().InvalidateTokens(user.UUID); err != nil {
+                respondError(c, http.StatusBadGateway, CodeInternalError, "注销失败，未能撤销 Yggdrasil 令牌")
+                return
+        }
 
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
 		// 清理相关令牌
