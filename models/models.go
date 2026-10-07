@@ -22,7 +22,6 @@ type User struct {
 	Email2FAEnabled    bool       `gorm:"type:tinyint(1);not null;default:0;column:email_2fa_enabled"`
 	RecoveryKey        string     `gorm:"type:varchar(255);column:recovery_key"`
 	RecoveryKeyEnabled bool       `gorm:"type:tinyint(1);not null;default:0;column:recovery_key_enabled"`
-	CBH                bool       `gorm:"type:tinyint(1);not null;default:1;column:cbh"`
 	DeletedAt          *time.Time `gorm:"index;column:deleted_at"`
 }
 

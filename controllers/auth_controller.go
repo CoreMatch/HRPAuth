@@ -1,6 +1,7 @@
 package controllers
 
 import (
+	"log"
 	"net/http"
 	"net/mail"
 	"regexp"
@@ -8,6 +9,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/clients"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
@@ -39,6 +41,7 @@ type RegisterRequest struct {
 	Password     string `json:"password"`
 	CaptchaToken string `json:"captcha_token"`
 	CaptchaCode  string `json:"captcha_code"`
+	MojangUUID   string `json:"mojang_uuid"`
 }
 
 func isValidEmail(email string) bool {
@@ -153,6 +156,17 @@ func (ac *AuthController) Register(c *gin.Context) {
 	if err := database.DB.Create(&user).Error; err != nil {
 		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to create user")
 		return
+	}
+
+	// If MojangUUID is provided, claim the account in Yggdrasil-API
+	if req.MojangUUID != "" {
+		yggClient := clients.NewYggdrasilClient()
+		if err := yggClient.ClaimAccount(req.MojangUUID, user.UUID); err != nil {
+			log.Printf("[Register] failed to claim Yggdrasil account for user %s: %v", user.UUID, err)
+			// We don't fail registration if claim fails, but maybe we should?
+			// The user said "认领代注册账号相关的逻辑，改为注册一个主服务的账号并绑定新微服务的账号"
+			// If claim fails, the game account won't be linked.
+		}
 	}
 
 	respondOK(c, "Register successful", gin.H{

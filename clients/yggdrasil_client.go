@@ -33,8 +33,41 @@ func (c *YggdrasilClient) SyncUsername(coreUserID, newUsername string) error {
 
 	url := fmt.Sprintf("%s/internal/sync-username", c.BaseURL)
 	body := map[string]string{
-		"core_user_id":  coreUserID,
+		"core_user_id": coreUserID,
 		"new_username": newUsername,
+	}
+
+	jsonBody, _ := json.Marshal(body)
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonBody))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Internal-Key", c.InternalKey)
+
+	resp, err := c.HTTPClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("yggdrasil api returned status %d", resp.StatusCode)
+	}
+
+	return nil
+}
+
+func (c *YggdrasilClient) ClaimAccount(mojangUUID, coreUserID string) error {
+	if c.BaseURL == "" {
+		return nil
+	}
+
+	url := fmt.Sprintf("%s/internal/claim-account", c.BaseURL)
+	body := map[string]string{
+		"mojang_uuid":  mojangUUID,
+		"core_user_id": coreUserID,
 	}
 
 	jsonBody, _ := json.Marshal(body)

@@ -59,9 +59,6 @@ func main() {
 
 	redis.Init()
 
-	botCleanupCtrl := controllers.NewBotUserCleanupController()
-	botCleanupCtrl.Start(24 * time.Hour)
-
 	oauth2CleanupCtrl := controllers.NewOAuth2CleanupController()
 	oauth2CleanupCtrl.Start(24 * time.Hour)
 

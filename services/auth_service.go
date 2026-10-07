@@ -71,40 +71,6 @@ func (as *AuthService) VerifyCredentials(identifier, password string, allowUsern
 	}
 }
 
-func (as *AuthService) CleanupInactiveBotUsers() int {
-	if !botUserCleanupMu.TryLock() {
-		return 0
-	}
-	defer botUserCleanupMu.Unlock()
-
-	cutoff := time.Now().Add(-30 * 24 * time.Hour)
-
-	var candidates []models.User
-	if err := database.DB.Where(
-		"cbh = ? AND register_at < ? AND last_sign_at < ?",
-		false, cutoff, cutoff,
-	).Find(&candidates).Error; err != nil {
-		log.Printf("[cleanup] failed to query candidates: %v", err)
-		return 0
-	}
-
-	deleted := 0
-	for _, u := range candidates {
-		if err := as.deleteUserCascade(u); err != nil {
-			log.Printf("[cleanup] ERROR deleting uid=%d username=%s: %v", u.UID, u.Username, err)
-			continue
-		}
-		deleted++
-		log.Printf("[cleanup] - uid=%d username=%s (created %s, last_seen %s)",
-			u.UID, u.Username, formatCleanupDate(u.RegisterAt), formatCleanupDate(u.LastSignAt),
-		)
-	}
-	if len(candidates) > 0 {
-		log.Printf("[cleanup] scanned %d users, deleted %d", len(candidates), deleted)
-	}
-	return deleted
-}
-
 // deleteUserCascade removes a user and all core dependent rows.
 func (as *AuthService) deleteUserCascade(u models.User) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
