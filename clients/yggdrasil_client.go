@@ -33,7 +33,7 @@ func (c *YggdrasilClient) SyncUsername(coreUserID, newUsername string) error {
 
 	url := fmt.Sprintf("%s/internal/sync-username", c.BaseURL)
 	body := map[string]string{
-		"core_user_id": coreUserID,
+		"core_user_id":  coreUserID,
 		"new_username": newUsername,
 	}
 
