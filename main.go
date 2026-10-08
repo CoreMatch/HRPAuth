@@ -110,6 +110,36 @@ func main() {
 		log.Fatalf("Failed to ensure OAuth2 built-in clients: %v", err)
 	}
 
+	r.GET("/", func(c *gin.Context) {
+		frontendURL := strings.TrimRight(config.AppConfig.Frontend.URL, "/")
+		registerURL := ""
+		if frontendURL != "" {
+			registerURL = frontendURL + "/register"
+		}
+
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "HRPAuth core service is running.",
+			"site": gin.H{
+				"name":           config.AppConfig.Site.Name,
+				"implementation": config.AppConfig.Site.Implementation,
+				"version":        config.AppConfig.Site.Version,
+				"url":            strings.TrimRight(config.AppConfig.Callback.URL, "/"),
+			},
+			"yggdrasil": gin.H{
+				"meta": gin.H{
+					"links": gin.H{
+						"homepage": frontendURL,
+						"register": registerURL,
+					},
+				},
+			},
+			"meta": gin.H{
+				"request_id": c.GetString("request_id"),
+			},
+		})
+	})
+
 	r.GET("/status", func(c *gin.Context) {
 		c.Redirect(http.StatusTemporaryRedirect, "/")
 	})

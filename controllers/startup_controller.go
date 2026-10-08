@@ -133,7 +133,7 @@ func (sc *StartupController) buildDefaultConfig() map[string]interface{} {
 			"internal_key": utils.GenerateRandomToken(32),
 		},
 		"yggdrasil_api": map[string]interface{}{
-			"base_url":     "http://localhost:2779",
+                        "base_url":     "http://localhost:2770",
 			"internal_key": utils.GenerateRandomToken(32),
 		},
 		"storage": map[string]interface{}{

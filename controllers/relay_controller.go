@@ -267,6 +267,10 @@ func normalizeDest(dest string) string {
 	return "/" + strings.Trim(strings.TrimSpace(dest), "/")
 }
 
+func relayAllowsAnonymous(rule RelayRule) bool {
+        return rule.Dest == "/yggdrasil-api" || strings.HasPrefix(rule.Dest, "/yggdrasil-api/")
+}
+
 // RelayMiddleware 是独立于编排层的 relay 转发处理器。
 // 命中 dest 前缀时把请求转发到对应微服务并短路；转发失败返回 502，
 // 不回退主服务（relay 路径归属微服务，主服务无对应处理）。
@@ -285,7 +289,7 @@ func RelayMiddleware(relays *RelayRegistry, presence *PresenceRegistry) gin.Hand
 			return
 		}
 
-		if !requireAuthLevel(c, serviceSecurityLevel(presence, rule.Service)) {
+                if !relayAllowsAnonymous(rule) && !requireAuthLevel(c, serviceSecurityLevel(presence, rule.Service)) {
 			c.Abort()
 			return
 		}
