@@ -3,6 +3,7 @@ package controllers
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -289,16 +290,23 @@ func RelayMiddleware(relays *RelayRegistry, presence *PresenceRegistry) gin.Hand
 			return
 		}
 
-                if !relayAllowsAnonymous(rule) && !requireAuthLevel(c, serviceSecurityLevel(presence, rule.Service)) {
+		anonymous := relayAllowsAnonymous(rule)
+		if !anonymous && !requireAuthLevel(c, serviceSecurityLevel(presence, rule.Service)) {
+			log.Printf("[HA-RELAY] request_id=%s method=%s path=%s dest=%s service=%s result=auth_failed status=%d",
+				requestIDFrom(c), c.Request.Method, c.Request.URL.Path, rule.Dest, rule.Service, http.StatusUnauthorized)
 			c.Abort()
 			return
 		}
 
 		target := strings.TrimRight(rule.Source, "/") + rest
+		log.Printf("[HA-RELAY] request_id=%s method=%s path=%s dest=%s service=%s anonymous=%t rest=%s target=%s",
+			requestIDFrom(c), c.Request.Method, c.Request.URL.Path, rule.Dest, rule.Service, anonymous, rest, target)
 		if forwardTo(c, target) {
+			log.Printf("[HA-RELAY] request_id=%s method=%s path=%s target=%s result=forwarded", requestIDFrom(c), c.Request.Method, c.Request.URL.Path, target)
 			c.Abort()
 			return
 		}
+		log.Printf("[HA-RELAY] request_id=%s method=%s path=%s target=%s result=forward_failed", requestIDFrom(c), c.Request.Method, c.Request.URL.Path, target)
 		respondError(c, http.StatusBadGateway, CodeRelayFailed, "relay forwarding failed")
 		c.Abort()
 	}

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -116,11 +117,15 @@ func maxSecurityForRules(presence *PresenceRegistry, rules []RouteRule) int {
 func forwardTo(c *gin.Context, target string) bool {
 	body, err := io.ReadAll(c.Request.Body)
 	if err != nil {
+		log.Printf("[HA-FWD] request_id=%s method=%s target=%s result=read_body_failed err=%v",
+			requestIDFrom(c), c.Request.Method, target, err)
 		return false
 	}
 
 	req, err := http.NewRequest(c.Request.Method, target, bytes.NewReader(body))
 	if err != nil {
+		log.Printf("[HA-FWD] request_id=%s method=%s target=%s result=new_request_failed err=%v",
+			requestIDFrom(c), c.Request.Method, target, err)
 		return false
 	}
 	req.URL.RawQuery = c.Request.URL.RawQuery
@@ -129,12 +134,16 @@ func forwardTo(c *gin.Context, target string) bool {
 
 	resp, err := httpClient.Do(req)
 	if err != nil {
+		log.Printf("[HA-FWD] request_id=%s method=%s target=%s result=do_request_failed err=%v",
+			requestIDFrom(c), c.Request.Method, target, err)
 		return false
 	}
 	defer resp.Body.Close()
 
 	respBody, err := io.ReadAll(resp.Body)
 	if err != nil {
+		log.Printf("[HA-FWD] request_id=%s method=%s target=%s result=read_response_failed err=%v",
+			requestIDFrom(c), c.Request.Method, target, err)
 		return false
 	}
 
@@ -142,6 +151,8 @@ func forwardTo(c *gin.Context, target string) bool {
 	if contentType == "" {
 		contentType = "application/octet-stream"
 	}
+	log.Printf("[HA-FWD] request_id=%s method=%s target=%s result=success upstream_status=%d bytes=%d",
+		requestIDFrom(c), c.Request.Method, target, resp.StatusCode, len(respBody))
 	c.Data(resp.StatusCode, contentType, respBody)
 	return true
 }
