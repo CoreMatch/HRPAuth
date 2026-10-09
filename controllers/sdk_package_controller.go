@@ -307,6 +307,10 @@ func extractFromTarGz(data []byte) (map[string]interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
+		// 目录条目无扩展名，跳过内容校验（仅校验路径合法性）。
+		if hdr.Typeflag == tar.TypeDir {
+			continue
+		}
 		if p == manifestPath {
 			rootManifests[p] = true
 			raw, err := io.ReadAll(io.LimitReader(tr, 4<<20))
@@ -355,7 +359,7 @@ func extractFromZip(data []byte) (map[string]interface{}, error) {
 				return nil, errNotArchive
 			}
 			manifestRaw = raw
-		} else if !isAllowedExt(p) {
+		} else if !isDirEntry(f.Name) && !isAllowedExt(p) {
 			return nil, fmt.Errorf("disallowed file extension: %s", path.Ext(p))
 		}
 	}
@@ -371,6 +375,11 @@ func extractFromZip(data []byte) (map[string]interface{}, error) {
 func isAllowedExt(p string) bool {
 	ext := strings.ToLower(path.Ext(p))
 	return allowedSDKExt[ext]
+}
+
+// isDirEntry 判断归档条目是否为目录：zip 目录条目以 "/" 结尾。
+func isDirEntry(name string) bool {
+	return strings.HasSuffix(name, "/")
 }
 
 // parseManifest 解析 manifest.json 并做字段级校验。
