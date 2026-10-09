@@ -29,6 +29,7 @@ type ConfigMigration struct {
 //   - "6":   top-level storage section with orphan_file_expiry_days (default 7)
 //   - "7":   oauth2.super_client_extra_scopes added for database scope delegation
 //   - "8":   decouple yggdrasil: core_api and yggdrasil_api sections introduced
+//   - "9":   top-level sdk_packages section introduced (compile-time SDK aggregation)
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
@@ -38,6 +39,7 @@ func configMigrations() []ConfigMigration {
 		{FromVersion: "5", ToVersion: "6", Migrate: migrateV5ToV6},
 		{FromVersion: "6", ToVersion: "7", Migrate: migrateV6ToV7},
 		{FromVersion: "7", ToVersion: "8", Migrate: migrateV7ToV8},
+		{FromVersion: "8", ToVersion: "9", Migrate: migrateV8ToV9},
 	}
 }
 
@@ -124,6 +126,28 @@ func VersionMajor(v string) int {
 		return 0
 	}
 	return n
+}
+
+// migrateV8ToV9 introduces the top-level sdk_packages section used by the
+// compile-time SDK aggregation flow (HA-WebUI-SDKHandler).
+func migrateV8ToV9(cfg map[string]interface{}, tokenGen func() string) error {
+	sdk, _ := cfg["sdk_packages"].(map[string]interface{})
+	if sdk == nil {
+		sdk = map[string]interface{}{}
+	}
+	if _, exists := sdk["storage_dir"]; !exists {
+		sdk["storage_dir"] = "./data/sdk_packages"
+	}
+	if _, exists := sdk["max_package_size"]; !exists {
+		sdk["max_package_size"] = 20 << 20
+	}
+	if _, exists := sdk["max_packages"]; !exists {
+		sdk["max_packages"] = 128
+	}
+	cfg["sdk_packages"] = sdk
+
+	cfg["version"] = "9"
+	return nil
 }
 
 // BackupConfigFile copies path to path + ".bak." + version before migration.

@@ -26,6 +26,15 @@ type Config struct {
 	Manage           ManageConfig
 	CoreAPI          CoreAPIConfig
 	YggdrasilAPI     YggdrasilAPIConfig
+	SDKPackages      SDKPackagesConfig
+}
+
+// SDKPackagesConfig holds settings for the SDK package broker used by the
+// WebUI SDK handler (HA-WebUI-SDKHandler).
+type SDKPackagesConfig struct {
+	StorageDir       string
+	MaxPackageSize   int
+	MaxPackages      int
 }
 
 type CoreAPIConfig struct {
@@ -132,7 +141,7 @@ type OAuth2Config struct {
 
 const ConfigFileName = "config.yaml"
 const ConfigFileDir = "./"
-const ConfigVersion = "8"
+const ConfigVersion = "9"
 
 var AppConfig *Config
 
@@ -177,9 +186,17 @@ func Load() {
 		Manage:           parseManageConfig(yamlConfig),
 		CoreAPI:          parseCoreAPIConfig(yamlConfig),
 		YggdrasilAPI:     parseYggdrasilAPIConfig(yamlConfig),
+		SDKPackages:      parseSDKPackagesConfig(yamlConfig),
 	}
+}
 
-	log.Println("Configuration loaded successfully")
+func parseSDKPackagesConfig(config map[string]interface{}) SDKPackagesConfig {
+	sdk, _ := config["sdk_packages"].(map[string]interface{})
+	return SDKPackagesConfig{
+		StorageDir:     getString(sdk, "storage_dir"),
+		MaxPackageSize: getInt(sdk, "max_package_size"),
+		MaxPackages:    getInt(sdk, "max_packages"),
+	}
 }
 
 func parseCoreAPIConfig(config map[string]interface{}) CoreAPIConfig {

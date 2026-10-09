@@ -80,6 +80,12 @@ const (
 	CodeRelayNotFound                  = "relay_not_found"
 	CodeSDKNotFound                    = "sdk_not_found"
 	CodeInsufficientAuthLevel          = "insufficient_auth_level"
+	CodeSdkPackageConflict             = "sdk_package_conflict"
+	CodeSdkPackageNotFound             = "sdk_package_not_found"
+	CodeSdkPackageInvalid              = "sdk_package_invalid"
+	CodeSdkPackageInvalidManifest      = "sdk_package_invalid_manifest"
+	CodeSdkPackageInvalidPath          = "sdk_package_invalid_path"
+	CodeSdkPackageTooLarge             = "sdk_package_too_large"
 	CodeInternalError                  = "internal_error"
 )
 

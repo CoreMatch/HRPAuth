@@ -91,6 +91,7 @@ func main() {
 	presenceCtrl := controllers.NewPresenceController(presenceRegistry)
 	routeCtrl := controllers.NewRouteController(routeRegistry, presenceRegistry)
 	relayCtrl := controllers.NewRelayController(relayRegistry, presenceRegistry)
+	sdkPackageCtrl := controllers.NewSdkPackageController(controllers.NewSdkPackageStore())
 
 	r.Use(controllers.RelayMiddleware(relayRegistry, presenceRegistry))
 	r.Use(controllers.OrchestrationMiddleware(routeRegistry, presenceRegistry))
@@ -202,8 +203,13 @@ func main() {
 		api.POST("/services/relay", relayCtrl.Register)
 		api.DELETE("/services/relay", relayCtrl.Delete)
 		api.GET("/services/relay", relayCtrl.List)
-		api.GET("/services/sdk/:name", presenceCtrl.GetSDK)
-		api.GET("/services/list", presenceCtrl.ListFrontendServices)
+
+		// SDK 包（编译期静态聚合）：satellite 上传，SDKHandler 拉取。
+		api.POST("/services/sdk-packages", sdkPackageCtrl.Upload)
+		api.GET("/services/sdk-packages", sdkPackageCtrl.List)
+		api.GET("/services/sdk-packages/:name", sdkPackageCtrl.Get)
+		api.GET("/services/sdk-packages/:name/download", sdkPackageCtrl.Download)
+		api.DELETE("/services/sdk-packages/:name", sdkPackageCtrl.Delete)
 	}
 
 	r.NoRoute(func(c *gin.Context) {

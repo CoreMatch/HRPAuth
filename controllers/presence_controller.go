@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -43,27 +42,16 @@ type PresenceScope struct {
 
 // PresenceRecord 记录一个已注册微服务的存在状态。
 // ExpiresAt 为零值表示该服务永不过期，一直保留到进程结束。
-// SDKURL 指向一份 JS 文件，告知目标区域如何使用本服务；
-// 内容由微服务与前端自行协商，主服务不参与，仅负责转发该文件。
 // SecurityLevel 为该服务的鉴权级别（0 无须 / 1 用户级 / 2 运维级）；
 // InteractsWith 声明与其他微服务的交互关系（隐式默认仅与主服务交互）。
 type PresenceRecord struct {
 	Name          string         `json:"name"`
 	Scope         *PresenceScope `json:"scope,omitempty"`
-	SDKURL        string         `json:"sdk_url,omitempty"`
 	SecurityLevel int            `json:"security_level"`
 	InteractsWith []string       `json:"interacts_with,omitempty"`
 	FirstSeen     time.Time      `json:"first_seen"`
 	LastSeen      time.Time      `json:"last_seen"`
 	ExpiresAt     time.Time      `json:"expires_at"`
-}
-
-// ServiceSummary 是前端可见的微服务概要。
-type ServiceSummary struct {
-	Name          string   `json:"name"`
-	ScopeName     string   `json:"scope_name"`
-	FrontendAreas []string `json:"frontend_areas,omitempty"`
-	SDKURL        string   `json:"sdk_url,omitempty"`
 }
 
 // PresenceRegistry 进程内维护所有已注册微服务的存在状态。
@@ -79,10 +67,10 @@ func NewPresenceRegistry() *PresenceRegistry {
 
 // Register 注册或刷新一个服务的心跳。
 // ttlSeconds <= 0 表示永不过期（未指定或显式指定为不过期）。
-// scope 可选；传入 nil 表示该服务不声明作用区域。sdkURL 可选。
+// scope 可选；传入 nil 表示该服务不声明作用区域。
 // securityLevel 钳制在 0~2。interactsWith 声明与其他服务的交互关系，可空。
 // 同步将记录持久化到 Redis，使主服务重启后能恢复注册状态。
-func (r *PresenceRegistry) Register(name string, ttlSeconds int, scope *PresenceScope, sdkURL string, securityLevel int, interactsWith []string) PresenceRecord {
+func (r *PresenceRegistry) Register(name string, ttlSeconds int, scope *PresenceScope, securityLevel int, interactsWith []string) PresenceRecord {
 	now := time.Now()
 
 	r.mu.Lock()
@@ -95,9 +83,6 @@ func (r *PresenceRegistry) Register(name string, ttlSeconds int, scope *Presence
 	record.LastSeen = now
 	if scope != nil {
 		record.Scope = scope
-	}
-	if sdkURL != "" {
-		record.SDKURL = sdkURL
 	}
 	if securityLevel < SecurityLevelNone {
 		securityLevel = SecurityLevelNone
@@ -222,45 +207,6 @@ func (r *PresenceRegistry) evict(name string) {
 	_ = redisClient.Client.SRem(ctx, presenceIndexKey(prefix), name).Err()
 }
 
-// FrontendSDKs 返回当前所有对前端可见且声明了 sdk_url 的微服务概要列表。
-// 前端实例本身不需要再注册 presence；它只需通过该列表了解当前有哪些前端 SDK
-// 可供加载，并结合 frontend_areas 决定挂载位置。
-func (r *PresenceRegistry) FrontendSDKs() []ServiceSummary {
-	r.mu.Lock()
-	defer r.mu.Unlock()
-
-	// 已过期记录惰性清除。
-	expired := make([]string, 0)
-	for name, record := range r.records {
-		if !record.ExpiresAt.IsZero() && time.Now().After(record.ExpiresAt) {
-			expired = append(expired, name)
-		}
-	}
-	for _, name := range expired {
-		delete(r.records, name)
-		r.evict(name)
-	}
-
-	services := make([]ServiceSummary, 0, len(r.records))
-	for _, record := range r.records {
-		if record.Scope == nil || len(record.Scope.FrontendAreas) == 0 || strings.TrimSpace(record.SDKURL) == "" {
-			continue
-		}
-		services = append(services, ServiceSummary{
-			Name:          record.Name,
-			ScopeName:     record.Scope.Name,
-			FrontendAreas: append([]string(nil), record.Scope.FrontendAreas...),
-			SDKURL:        record.SDKURL,
-		})
-	}
-
-	sort.Slice(services, func(i, j int) bool {
-		return services[i].Name < services[j].Name
-	})
-
-	return services
-}
-
 type PresenceController struct {
 	registry *PresenceRegistry
 }
@@ -276,9 +222,6 @@ type PresenceRequest struct {
 	TTLSeconds int `json:"ttl_seconds"`
 	// Scope 为服务声明的作用区域，可选。
 	Scope *PresenceScope `json:"scope"`
-	// SDKURL 为指向 JS 文件的地址，用于告知目标区域如何使用本服务；
-	// 内容由微服务与前端自行协商，主服务仅负责转发。可选。
-	SDKURL string `json:"sdk_url"`
 	// SecurityLevel 为该服务的鉴权级别：0 无须 / 1 用户级 / 2 运维级。默认 0。
 	SecurityLevel int `json:"security_level"`
 	// InteractsWith 声明与其他微服务的交互关系；隐式默认仅与主服务交互。
@@ -293,7 +236,7 @@ func (pc *PresenceController) Bonjour(c *gin.Context) {
 	}
 
 	name := strings.TrimSpace(req.Name)
-	record := pc.registry.Register(name, req.TTLSeconds, req.Scope, strings.TrimSpace(req.SDKURL), req.SecurityLevel, req.InteractsWith)
+	record := pc.registry.Register(name, req.TTLSeconds, req.Scope, req.SecurityLevel, req.InteractsWith)
 
 	var expiresAt any
 	if !record.ExpiresAt.IsZero() {
@@ -306,51 +249,4 @@ func (pc *PresenceController) Bonjour(c *gin.Context) {
 		"last_seen":  record.LastSeen,
 		"expires_at": expiresAt,
 	})
-}
-
-// ListFrontendServices 供前端实例拉取当前存在的前端 SDK 列表。
-// 公开接口，无需鉴权，也不要求前端先通过 /services/presence 注册自己。
-// 后端把前端视为一个特殊的微服务 SDK 消费端：只返回声明了 frontend_areas
-// 且带有 sdk_url 的微服务，并把 frontend_areas 一并返回给前端自行决定挂载。
-func (pc *PresenceController) ListFrontendServices(c *gin.Context) {
-	services := pc.registry.FrontendSDKs()
-
-	// 将微服务的内网 sdk_url 转换为主服务公网的 relay 路径，避免向浏览器泄露内部地址。
-	base := strings.TrimRight(config.AppConfig.Callback.URL, "/")
-	if base != "" {
-		for i, svc := range services {
-			if svc.SDKURL != "" {
-				services[i].SDKURL = base + "/services/sdk/" + svc.Name
-			}
-		}
-	}
-
-	respondOK(c, "services fetched", services)
-}
-
-// GetSDK 供前端拉取某服务的 JS 使用说明文件。
-// 主服务不参与文件内容，仅作为 relay 转发微服务声明的 sdk_url；
-// 要求该服务已注册且声明了 sdk_url，否则返回 404。
-func (pc *PresenceController) GetSDK(c *gin.Context) {
-	name := strings.TrimSpace(c.Param("name"))
-	if name == "" {
-		respondError(c, http.StatusBadRequest, CodeInvalidRequest, "service name is required")
-		return
-	}
-
-	record, ok := pc.registry.Get(name)
-	if !ok {
-		respondError(c, http.StatusNotFound, CodeSDKNotFound, "service not registered")
-		return
-	}
-	if strings.TrimSpace(record.SDKURL) == "" {
-		respondError(c, http.StatusNotFound, CodeSDKNotFound, "service has no sdk_url declared")
-		return
-	}
-
-	if !forwardTo(c, record.SDKURL) {
-		respondError(c, http.StatusBadGateway, CodeRelayFailed, "failed to relay sdk file")
-		return
-	}
-	c.Abort()
 }

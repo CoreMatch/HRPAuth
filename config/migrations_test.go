@@ -36,7 +36,7 @@ func TestMigrateConfigUpToDate(t *testing.T) {
 }
 
 func TestMigrateConfigFutureVersion(t *testing.T) {
-	cfg := map[string]interface{}{"version": "8", "site": map[string]interface{}{"name": "future"}}
+	cfg := map[string]interface{}{"version": "10", "site": map[string]interface{}{"name": "future"}}
 	out, changed, err := MigrateConfig(cfg, tokenGen)
 	if err != nil {
 		t.Fatalf("future version must warn and continue, got error: %v", err)
@@ -44,7 +44,7 @@ func TestMigrateConfigFutureVersion(t *testing.T) {
 	if changed {
 		t.Fatal("expected no migration for a newer config")
 	}
-	if out["version"] != "8" {
+	if out["version"] != "10" {
 		t.Fatalf("expected untouched version, got %v", out["version"])
 	}
 }
