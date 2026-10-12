@@ -59,7 +59,7 @@ func OrchestrationMiddleware(routes *RouteRegistry, presence *registry.PresenceR
 		preRules := routes.MatchPre(path)
 		if len(preRules) > 0 {
 			// 多服务交互按最严格级别：取所有参与前置转发服务的 security_level 最大值。
-			if !requireAuthLevel(c, maxSecurityForRules(presence, preRules)) {
+			if !RequireAuthLevel(c, maxSecurityForRules(presence, preRules)) {
 				c.Abort()
 				return
 			}

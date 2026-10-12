@@ -48,8 +48,8 @@ func resolveAuthLevel(c *gin.Context) int {
 	return SecurityLevelUser
 }
 
-// requireAuthLevel 校验请求方级别是否满足 required；不满足时写出错误响应并返回 false。
-func requireAuthLevel(c *gin.Context, required int) bool {
+// RequireAuthLevel 校验请求方级别是否满足 required；不满足时写出错误响应并返回 false。
+func RequireAuthLevel(c *gin.Context, required int) bool {
 	if required <= SecurityLevelNone {
 		return true
 	}

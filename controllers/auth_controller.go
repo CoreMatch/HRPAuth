@@ -1,15 +1,13 @@
 package controllers
 
 import (
-        "fmt"
-        "net/http"
+	"net/http"
 	"net/mail"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/lnb/HRPAuth-Backend-Go/clients"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
@@ -41,7 +39,6 @@ type RegisterRequest struct {
 	Password     string `json:"password"`
 	CaptchaToken string `json:"captcha_token"`
 	CaptchaCode  string `json:"captcha_code"`
-	MojangUUID   string `json:"mojang_uuid"`
 }
 
 func isValidEmail(email string) bool {
@@ -50,7 +47,7 @@ func isValidEmail(email string) bool {
 }
 
 func (ac *AuthController) VerifyCredentials(c *gin.Context) {
-	if !requireAuthLevel(c, SecurityLevelOps) {
+	if !RequireAuthLevel(c, SecurityLevelOps) {
 		return
 	}
 
@@ -151,21 +148,9 @@ func (ac *AuthController) Register(c *gin.Context) {
 		Verified:   false,
 	}
 
-        if err := database.DB.Create(&user).Error; err != nil {
+	if err := database.DB.Create(&user).Error; err != nil {
 		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to create user")
 		return
-	}
-
-	if req.MojangUUID != "" {
-		yggClient := clients.NewYggdrasilClient()
-		if err := yggClient.ClaimAccount(req.MojangUUID, user.UUID); err != nil {
-                        if cleanupErr := database.DB.Unscoped().Delete(&user).Error; cleanupErr != nil {
-                                respondError(c, http.StatusInternalServerError, CodeInternalError, fmt.Sprintf("Failed to bind Yggdrasil account and rollback local user: %v", cleanupErr))
-                                return
-                        }
-                        respondError(c, http.StatusBadGateway, CodeInternalError, "Failed to bind Yggdrasil account")
-                        return
-		}
 	}
 
 	respondOK(c, "Register successful", gin.H{

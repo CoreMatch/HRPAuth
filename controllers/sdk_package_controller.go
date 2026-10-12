@@ -36,7 +36,7 @@ const manifestPath = "manifest.json"
 //   - 校验归档格式、路径安全、根级唯一 manifest、manifest 字段合法性。
 //   - 同名包已存在 → 409 sdk_package_conflict。
 func (c *SdkPackageController) Upload(ctx *gin.Context) {
-	if !requireAuthLevel(ctx, SecurityLevelOps) {
+	if !RequireAuthLevel(ctx, SecurityLevelOps) {
 		return
 	}
 

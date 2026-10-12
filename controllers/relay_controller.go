@@ -269,10 +269,6 @@ func normalizeDest(dest string) string {
 	return "/" + strings.Trim(strings.TrimSpace(dest), "/")
 }
 
-func relayAllowsAnonymous(rule RelayRule) bool {
-	return rule.Dest == "/yggdrasil-api" || strings.HasPrefix(rule.Dest, "/yggdrasil-api/")
-}
-
 // RelayMiddleware 是独立于编排层的 relay 转发处理器。
 // 命中 dest 前缀时把请求转发到对应微服务并短路；转发失败返回 502，
 // 不回退主服务（relay 路径归属微服务，主服务无对应处理）。
@@ -291,8 +287,7 @@ func RelayMiddleware(relays *RelayRegistry, presence *registry.PresenceRegistry)
 			return
 		}
 
-		anonymous := relayAllowsAnonymous(rule)
-		if !anonymous && !requireAuthLevel(c, serviceSecurityLevel(presence, rule.Service)) {
+		if !RequireAuthLevel(c, serviceSecurityLevel(presence, rule.Service)) {
 			log.Printf("[HA-RELAY] request_id=%s method=%s path=%s dest=%s service=%s result=auth_failed status=%d",
 				requestIDFrom(c), c.Request.Method, c.Request.URL.Path, rule.Dest, rule.Service, http.StatusUnauthorized)
 			c.Abort()
@@ -300,8 +295,8 @@ func RelayMiddleware(relays *RelayRegistry, presence *registry.PresenceRegistry)
 		}
 
 		target := strings.TrimRight(rule.Source, "/") + rest
-		log.Printf("[HA-RELAY] request_id=%s method=%s path=%s dest=%s service=%s anonymous=%t rest=%s target=%s",
-			requestIDFrom(c), c.Request.Method, c.Request.URL.Path, rule.Dest, rule.Service, anonymous, rest, target)
+		log.Printf("[HA-RELAY] request_id=%s method=%s path=%s dest=%s service=%s rest=%s target=%s",
+			requestIDFrom(c), c.Request.Method, c.Request.URL.Path, rule.Dest, rule.Service, rest, target)
 		if forwardTo(c, target) {
 			log.Printf("[HA-RELAY] request_id=%s method=%s path=%s target=%s result=forwarded", requestIDFrom(c), c.Request.Method, c.Request.URL.Path, target)
 			c.Abort()

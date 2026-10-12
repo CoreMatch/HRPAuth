@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-        "github.com/lnb/HRPAuth-Backend-Go/clients"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	"github.com/lnb/HRPAuth-Backend-Go/utils"
@@ -139,11 +138,6 @@ func (uc *UserInfoController) DeleteAccount(c *gin.Context) {
 		return
 	}
 
-        if err := clients.NewYggdrasilClient().InvalidateTokens(user.UUID); err != nil {
-                respondError(c, http.StatusBadGateway, CodeInternalError, "注销失败，未能撤销 Yggdrasil 令牌")
-                return
-        }
-
 	err := database.DB.Transaction(func(tx *gorm.DB) error {
 		// 清理相关令牌
 		if err := tx.Where("user_id = ?", user.UUID).Delete(&models.OAuth2AuthorizationCode{}).Error; err != nil {
@@ -196,5 +190,27 @@ func (uc *UserInfoController) ListDeletedAccounts(c *gin.Context) {
 
 	respondOK(c, "获取删除列表成功", gin.H{
 		"deleted_accounts": deletedAccounts,
+	})
+}
+
+// GetUserInfoInternal 供内部微服务通过 UUID 获取用户信息。
+// 需要 SecurityLevelOps (2) 权限。
+func (uc *UserInfoController) GetUserInfoInternal(c *gin.Context) {
+	if !RequireAuthLevel(c, SecurityLevelOps) {
+		return
+	}
+
+	uuid := c.Param("uuid")
+	var user models.User
+	if err := database.DB.Where("uuid = ?", uuid).First(&user).Error; err != nil {
+		respondError(c, http.StatusNotFound, CodeUserNotFound, "user not found")
+		return
+	}
+
+	respondOK(c, "success", gin.H{
+		"uid":      user.UID,
+		"uuid":     user.UUID,
+		"email":    user.Email,
+		"username": user.Username,
 	})
 }

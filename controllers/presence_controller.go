@@ -27,6 +27,8 @@ type PresenceRequest struct {
 	SecurityLevel int `json:"security_level"`
 	// InteractsWith 声明与其他微服务的交互关系；隐式默认仅与主服务交互。
 	InteractsWith []string `json:"interacts_with"`
+	// RootMetadata 为微服务想要在根路径 (/) 返回的顶级元数据。
+	RootMetadata map[string]interface{} `json:"root_metadata"`
 }
 
 func (pc *PresenceController) Bonjour(c *gin.Context) {
@@ -37,7 +39,7 @@ func (pc *PresenceController) Bonjour(c *gin.Context) {
 	}
 
 	name := strings.TrimSpace(req.Name)
-	record := pc.registry.Register(name, req.TTLSeconds, req.Scope, req.SecurityLevel, req.InteractsWith)
+	record := pc.registry.Register(name, req.TTLSeconds, req.Scope, req.SecurityLevel, req.InteractsWith, req.RootMetadata)
 
 	var expiresAt any
 	if !record.ExpiresAt.IsZero() {
@@ -53,7 +55,7 @@ func (pc *PresenceController) Bonjour(c *gin.Context) {
 }
 
 func (pc *PresenceController) AuthKey(c *gin.Context) {
-	if !requireAuthLevel(c, SecurityLevelOps) {
+	if !RequireAuthLevel(c, SecurityLevelOps) {
 		return
 	}
 

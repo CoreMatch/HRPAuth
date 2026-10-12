@@ -117,13 +117,7 @@ func main() {
 	}
 
 	r.GET("/", func(c *gin.Context) {
-		frontendURL := strings.TrimRight(config.AppConfig.Frontend.URL, "/")
-		registerURL := ""
-		if frontendURL != "" {
-			registerURL = frontendURL + "/register"
-		}
-
-		c.JSON(http.StatusOK, gin.H{
+		response := gin.H{
 			"success": true,
 			"message": "HRPAuth core service is running.",
 			"site": gin.H{
@@ -131,19 +125,23 @@ func main() {
 				"implementation": config.AppConfig.Site.Implementation,
 				"version":        config.AppConfig.Site.Version,
 				"url":            strings.TrimRight(config.AppConfig.Callback.URL, "/"),
-			},
-			"yggdrasil": gin.H{
-				"meta": gin.H{
-					"links": gin.H{
-						"homepage": frontendURL,
-						"register": registerURL,
-					},
-				},
+				"frontend_url":   strings.TrimRight(config.AppConfig.Frontend.URL, "/"),
 			},
 			"meta": gin.H{
 				"request_id": c.GetString("request_id"),
 			},
-		})
+		}
+
+		// 动态聚合所有微服务的 RootMetadata。
+		for _, record := range presenceRegistry.GetAllRecords() {
+			if len(record.RootMetadata) > 0 {
+				for k, v := range record.RootMetadata {
+					response[k] = v
+				}
+			}
+		}
+
+		c.JSON(http.StatusOK, response)
 	})
 
 	r.GET("/status", func(c *gin.Context) {
@@ -175,6 +173,7 @@ func main() {
 		api.POST("/user", userInfoCtrl.GetUser)
 		api.DELETE("/user", userInfoCtrl.DeleteAccount)
 		api.GET("/user/deleted", userInfoCtrl.ListDeletedAccounts)
+		api.GET("/services/users/:uuid", userInfoCtrl.GetUserInfoInternal)
 		api.POST("/user/lookup", userInfoCtrl.LookupUser)
 
 		api.POST("/user/security/change-email/send-code", userSecurityCtrl.SendChangeEmailCode)

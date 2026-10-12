@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/lnb/HRPAuth-Backend-Go/clients"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
@@ -17,13 +16,10 @@ import (
 )
 
 type AuthService struct {
-	yggClient *clients.YggdrasilClient
 }
 
 func NewAuthService() *AuthService {
-	return &AuthService{
-		yggClient: clients.NewYggdrasilClient(),
-	}
+	return &AuthService{}
 }
 
 type UserInfo struct {
@@ -66,7 +62,6 @@ func (as *AuthService) VerifyCredentials(identifier, password string, allowUsern
 	}
 }
 
-// deleteUserCascade removes a user and all core dependent rows.
 func (as *AuthService) deleteUserCascade(u models.User) error {
 	return database.DB.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("user_id = ?", u.UUID).Delete(&models.OAuth2AuthorizationCode{}).Error; err != nil {
@@ -115,10 +110,6 @@ func (as *AuthService) CleanupDeletedAccounts() int {
 
 	deleted := 0
 	for _, u := range candidates {
-                  if err := as.yggClient.DeleteAccount(u.UUID); err != nil {
-                          log.Printf("[account-cleanup] failed to delete Yggdrasil account for uid=%d username=%s: %v", u.UID, u.Username, err)
-                          continue
-                  }
 		if err := as.deleteUserCascade(u); err != nil {
 			log.Printf("[account-cleanup] ERROR hard deleting uid=%d username=%s: %v", u.UID, u.Username, err)
 			continue
@@ -149,16 +140,9 @@ func (as *AuthService) ChangeUsername(userUUID, newUsername string) error {
 		return fmt.Errorf("username already exists")
 	}
 
-          if err := database.DB.Model(&models.User{}).Where("uuid = ?", user.UUID).Update("username", newUsername).Error; err != nil {
+	if err := database.DB.Model(&models.User{}).Where("uuid = ?", user.UUID).Update("username", newUsername).Error; err != nil {
 		return err
 	}
-
-          if err := as.yggClient.SyncUsername(user.UUID, newUsername); err != nil {
-                  if revertErr := database.DB.Model(&models.User{}).Where("uuid = ?", user.UUID).Update("username", user.Username).Error; revertErr != nil {
-                          return fmt.Errorf("failed to sync username to yggdrasil api: %v (revert failed: %v)", err, revertErr)
-                  }
-                  return fmt.Errorf("failed to sync username to yggdrasil api: %v", err)
-          }
 
 	return nil
 }
