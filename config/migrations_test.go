@@ -150,21 +150,21 @@ func TestMigrateConfigV1Chain(t *testing.T) {
 
 	coreAPI, ok := out["core_api"].(map[string]interface{})
 	if !ok {
-		t.Fatal("core_api section missing after v7->v8")
+		t.Fatal("core_api section missing after migration")
 	}
-	if coreAPI["internal_key"] != "test-manage-token" {
-		t.Errorf("expected generated core_api internal_key, got %v", coreAPI["internal_key"])
+	if coreAPI["internal_key"] != nil {
+		t.Errorf("expected no core_api internal_key in version 10, got %v", coreAPI["internal_key"])
 	}
 
 	yggAPI, ok := out["yggdrasil_api"].(map[string]interface{})
 	if !ok {
-		t.Fatal("yggdrasil_api section missing after v7->v8")
+		t.Fatal("yggdrasil_api section missing after migration")
 	}
 	if yggAPI["base_url"] != "http://localhost:2779" {
 		t.Errorf("expected default yggdrasil_api base_url, got %v", yggAPI["base_url"])
 	}
-	if yggAPI["internal_key"] != "test-manage-token" {
-		t.Errorf("expected yggdrasil_api internal_key copied from core_api, got %v", yggAPI["internal_key"])
+	if yggAPI["internal_key"] != nil {
+		t.Errorf("expected no yggdrasil_api internal_key in version 10, got %v", yggAPI["internal_key"])
 	}
 }
 

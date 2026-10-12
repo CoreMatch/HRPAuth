@@ -12,6 +12,7 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/controllers"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/redis"
+	"github.com/lnb/HRPAuth-Backend-Go/registry"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
 )
 
@@ -70,7 +71,8 @@ func main() {
 	r.Use(CORSMiddleware())
 	r.Use(controllers.RequestIDMiddleware())
 
-	presenceRegistry := controllers.NewPresenceRegistry()
+	presenceRegistry := registry.NewPresenceRegistry()
+	registry.GlobalRegistry = presenceRegistry
 	routeRegistry := controllers.NewRouteRegistry()
 	relayRegistry := controllers.NewRelayRegistry()
 
@@ -87,6 +89,9 @@ func main() {
 		log.Printf("warning: failed to load route registry from redis: %v", err)
 	}
 	cancelLoad()
+
+	heartbeatWorker := registry.NewHeartbeatWorker(presenceRegistry)
+	heartbeatWorker.Start(10 * time.Minute)
 
 	presenceCtrl := controllers.NewPresenceController(presenceRegistry)
 	routeCtrl := controllers.NewRouteController(routeRegistry, presenceRegistry)
@@ -199,6 +204,7 @@ func main() {
 		api.GET("/captcha/image/:token", captchaCtrl.Image)
 
 		api.POST("/services/presence", presenceCtrl.Bonjour)
+		api.POST("/services/auth-key", presenceCtrl.AuthKey)
 		api.POST("/services/route", routeCtrl.Register)
 		api.POST("/services/relay", relayCtrl.Register)
 		api.DELETE("/services/relay", relayCtrl.Delete)

@@ -30,6 +30,7 @@ type ConfigMigration struct {
 //   - "7":   oauth2.super_client_extra_scopes added for database scope delegation
 //   - "8":   decouple yggdrasil: core_api and yggdrasil_api sections introduced
 //   - "9":   top-level sdk_packages section introduced (compile-time SDK aggregation)
+//   - "10":  remove static internal_key from core_api and yggdrasil_api
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
@@ -40,6 +41,7 @@ func configMigrations() []ConfigMigration {
 		{FromVersion: "6", ToVersion: "7", Migrate: migrateV6ToV7},
 		{FromVersion: "7", ToVersion: "8", Migrate: migrateV7ToV8},
 		{FromVersion: "8", ToVersion: "9", Migrate: migrateV8ToV9},
+		{FromVersion: "9", ToVersion: "10", Migrate: migrateV9ToV10},
 	}
 }
 
@@ -147,6 +149,21 @@ func migrateV8ToV9(cfg map[string]interface{}, tokenGen func() string) error {
 	cfg["sdk_packages"] = sdk
 
 	cfg["version"] = "9"
+	return nil
+}
+
+func migrateV9ToV10(cfg map[string]interface{}, tokenGen func() string) error {
+	// 1. Remove internal_key from core_api
+	if core, ok := cfg["core_api"].(map[string]interface{}); ok {
+		delete(core, "internal_key")
+	}
+
+	// 2. Remove internal_key from yggdrasil_api
+	if ygg, ok := cfg["yggdrasil_api"].(map[string]interface{}); ok {
+		delete(ygg, "internal_key")
+	}
+
+	cfg["version"] = "10"
 	return nil
 }
 

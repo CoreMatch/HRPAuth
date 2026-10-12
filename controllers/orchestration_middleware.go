@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/lnb/HRPAuth-Backend-Go/registry"
 )
 
 const orchestrationTimeout = 10 * time.Second
@@ -44,7 +45,7 @@ func (rc *responseCapture) Write(b []byte) (int, error) {
 //   - 后置路由：主服务响应成功（2xx）后，将请求上下文与响应内容异步投递
 //     给声明了 post 的微服务；失败/非 2xx 不触发。
 //   - /services/* 系统端点不参与编排。
-func OrchestrationMiddleware(routes *RouteRegistry, presence *PresenceRegistry) gin.HandlerFunc {
+func OrchestrationMiddleware(routes *RouteRegistry, presence *registry.PresenceRegistry) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		path := c.Request.URL.Path
 
@@ -104,7 +105,7 @@ func forwardRequest(c *gin.Context, targetBase string) bool {
 }
 
 // maxSecurityForRules 取一组路由规则中涉及服务的最严格鉴权级别。
-func maxSecurityForRules(presence *PresenceRegistry, rules []RouteRule) int {
+func maxSecurityForRules(presence *registry.PresenceRegistry, rules []RouteRule) int {
 	levels := make([]int, 0, len(rules))
 	for _, rule := range rules {
 		levels = append(levels, serviceSecurityLevel(presence, rule.Service))

@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
 	redisClient "github.com/lnb/HRPAuth-Backend-Go/redis"
+	"github.com/lnb/HRPAuth-Backend-Go/registry"
 )
 
 // routeTTL 是 route 规则的 Redis 存活时间。
@@ -159,10 +160,10 @@ type RouteRequest struct {
 
 type RouteController struct {
 	registry *RouteRegistry
-	presence *PresenceRegistry
+	presence *registry.PresenceRegistry
 }
 
-func NewRouteController(registry *RouteRegistry, presence *PresenceRegistry) *RouteController {
+func NewRouteController(registry *RouteRegistry, presence *registry.PresenceRegistry) *RouteController {
 	return &RouteController{registry: registry, presence: presence}
 }
 

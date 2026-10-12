@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/lnb/HRPAuth-Backend-Go/config"
+	"github.com/lnb/HRPAuth-Backend-Go/registry"
 )
 
 func TestBonjourRegistersPresence(t *testing.T) {
@@ -19,8 +20,8 @@ func TestBonjourRegistersPresence(t *testing.T) {
 		config.AppConfig = previousConfig
 	}()
 
-	registry := NewPresenceRegistry()
-	controller := NewPresenceController(registry)
+	reg := registry.NewPresenceRegistry()
+	controller := NewPresenceController(reg)
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
 
@@ -35,7 +36,7 @@ func TestBonjourRegistersPresence(t *testing.T) {
 		t.Fatalf("expected 200, got %d with body %s", recorder.Code, recorder.Body.String())
 	}
 
-	record, ok := registry.Get("texture-service")
+	record, ok := reg.Get("texture-service")
 	if !ok {
 		t.Fatalf("expected texture-service to be registered")
 	}

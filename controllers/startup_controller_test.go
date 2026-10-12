@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"gopkg.in/yaml.v3"
 )
 
@@ -50,8 +51,8 @@ yggdrasil:
 		t.Fatalf("failed to parse migrated config: %v", err)
 	}
 
-	if cfg["version"] != "9" {
-		t.Fatalf("expected version 9 after migration, got %v", cfg["version"])
+	if cfg["version"] != config.ConfigVersion {
+		t.Fatalf("expected version %s after migration, got %v", config.ConfigVersion, cfg["version"])
 	}
 	sec, ok := cfg["security"].(map[string]interface{})
 	if !ok {

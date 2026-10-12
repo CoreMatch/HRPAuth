@@ -50,9 +50,7 @@ func isValidEmail(email string) bool {
 }
 
 func (ac *AuthController) VerifyCredentials(c *gin.Context) {
-	internalKey := c.GetHeader("X-Internal-Key")
-	if config.AppConfig.CoreAPI.InternalKey == "" || internalKey != config.AppConfig.CoreAPI.InternalKey {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid internal key"})
+	if !requireAuthLevel(c, SecurityLevelOps) {
 		return
 	}
 

@@ -8,22 +8,33 @@ import (
 	"time"
 
 	"github.com/lnb/HRPAuth-Backend-Go/config"
+	"github.com/lnb/HRPAuth-Backend-Go/registry"
 )
 
 type YggdrasilClient struct {
-	BaseURL     string
-	InternalKey string
-	HTTPClient  *http.Client
+	BaseURL    string
+	HTTPClient *http.Client
 }
 
 func NewYggdrasilClient() *YggdrasilClient {
 	return &YggdrasilClient{
-		BaseURL:     config.AppConfig.YggdrasilAPI.BaseURL,
-		InternalKey: config.AppConfig.YggdrasilAPI.InternalKey,
+		BaseURL: config.AppConfig.YggdrasilAPI.BaseURL,
 		HTTPClient: &http.Client{
 			Timeout: 5 * time.Second,
 		},
 	}
+}
+
+func (c *YggdrasilClient) getInternalKey() string {
+	if registry.GlobalRegistry == nil {
+		return ""
+	}
+	// We use the super client ID as the service name for Yggdrasil API
+	record, exists := registry.GlobalRegistry.Get(config.AppConfig.OAuth2.SuperClientID)
+	if !exists {
+		return ""
+	}
+	return record.InternalKey
 }
 
 func (c *YggdrasilClient) SyncUsername(coreUserID, newUsername string) error {
@@ -44,7 +55,7 @@ func (c *YggdrasilClient) SyncUsername(coreUserID, newUsername string) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Internal-Key", c.InternalKey)
+	req.Header.Set("X-Internal-Key", c.getInternalKey())
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -77,7 +88,7 @@ func (c *YggdrasilClient) ClaimAccount(mojangUUID, coreUserID string) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Internal-Key", c.InternalKey)
+	req.Header.Set("X-Internal-Key", c.getInternalKey())
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -109,7 +120,7 @@ func (c *YggdrasilClient) DeleteAccount(coreUserID string) error {
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Internal-Key", c.InternalKey)
+	req.Header.Set("X-Internal-Key", c.getInternalKey())
 
 	resp, err := c.HTTPClient.Do(req)
 	if err != nil {
@@ -141,7 +152,7 @@ func (c *YggdrasilClient) InvalidateTokens(coreUserID string) error {
         }
 
         req.Header.Set("Content-Type", "application/json")
-        req.Header.Set("X-Internal-Key", c.InternalKey)
+        req.Header.Set("X-Internal-Key", c.getInternalKey())
 
         resp, err := c.HTTPClient.Do(req)
         if err != nil {

@@ -38,19 +38,16 @@ type SDKPackagesConfig struct {
 }
 
 type CoreAPIConfig struct {
-	InternalKey string
 }
 
 type YggdrasilAPIConfig struct {
-	BaseURL     string
-	InternalKey string
+	BaseURL string
 }
 
 func parseYggdrasilAPIConfig(config map[string]interface{}) YggdrasilAPIConfig {
 	ygg, _ := config["yggdrasil_api"].(map[string]interface{})
 	return YggdrasilAPIConfig{
-		BaseURL:     getString(ygg, "base_url"),
-		InternalKey: getString(ygg, "internal_key"),
+		BaseURL: getString(ygg, "base_url"),
 	}
 }
 
@@ -141,7 +138,7 @@ type OAuth2Config struct {
 
 const ConfigFileName = "config.yaml"
 const ConfigFileDir = "./"
-const ConfigVersion = "9"
+const ConfigVersion = "10"
 
 var AppConfig *Config
 
@@ -200,10 +197,7 @@ func parseSDKPackagesConfig(config map[string]interface{}) SDKPackagesConfig {
 }
 
 func parseCoreAPIConfig(config map[string]interface{}) CoreAPIConfig {
-	core, _ := config["core_api"].(map[string]interface{})
-	return CoreAPIConfig{
-		InternalKey: getString(core, "internal_key"),
-	}
+	return CoreAPIConfig{}
 }
 
 func parseSiteConfig(config map[string]interface{}) SiteConfig {
