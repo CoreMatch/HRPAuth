@@ -98,7 +98,7 @@ func (c *SdkPackageController) Upload(ctx *gin.Context) {
 // List 处理 GET /services/sdk-packages：
 //   返回全部包元信息数组；设置 ETag（列表内容 sha256），配合 If-None-Match 返回 304。
 func (c *SdkPackageController) List(ctx *gin.Context) {
-	if !requireAuthLevel(ctx, SecurityLevelOps) {
+	if !RequireAuthLevel(ctx, SecurityLevelOps) {
 		return
 	}
 	metas, err := c.store.List()
@@ -122,7 +122,7 @@ func (c *SdkPackageController) List(ctx *gin.Context) {
 
 // Get 处理 GET /services/sdk-packages/:name：返回单个包元信息。
 func (c *SdkPackageController) Get(ctx *gin.Context) {
-	if !requireAuthLevel(ctx, SecurityLevelOps) {
+	if !RequireAuthLevel(ctx, SecurityLevelOps) {
 		return
 	}
 	name := strings.TrimSpace(ctx.Param("name"))
@@ -140,7 +140,7 @@ func (c *SdkPackageController) Get(ctx *gin.Context) {
 
 // Download 处理 GET /services/sdk-packages/:name/download：返回原始归档字节流。
 func (c *SdkPackageController) Download(ctx *gin.Context) {
-	if !requireAuthLevel(ctx, SecurityLevelOps) {
+	if !RequireAuthLevel(ctx, SecurityLevelOps) {
 		return
 	}
 	name := strings.TrimSpace(ctx.Param("name"))
@@ -161,7 +161,7 @@ func (c *SdkPackageController) Download(ctx *gin.Context) {
 
 // Delete 处理 DELETE /services/sdk-packages/:name。
 func (c *SdkPackageController) Delete(ctx *gin.Context) {
-	if !requireAuthLevel(ctx, SecurityLevelOps) {
+	if !RequireAuthLevel(ctx, SecurityLevelOps) {
 		return
 	}
 	name := strings.TrimSpace(ctx.Param("name"))

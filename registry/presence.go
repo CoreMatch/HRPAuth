@@ -36,6 +36,7 @@ type PresenceRecord struct {
 	RootMetadata  map[string]interface{} `json:"root_metadata,omitempty"`
 	InteractsWith []string               `json:"interacts_with,omitempty"`
 	InternalKey   string                 `json:"internal_key,omitempty"`
+	SDKURL        string                 `json:"sdk_url,omitempty"`
 	FirstSeen     time.Time              `json:"first_seen"`
 	LastSeen      time.Time              `json:"last_seen"`
 	ExpiresAt     time.Time              `json:"expires_at"`
@@ -52,7 +53,7 @@ func NewPresenceRegistry() *PresenceRegistry {
 	return &PresenceRegistry{records: make(map[string]PresenceRecord)}
 }
 
-func (r *PresenceRegistry) Register(name string, ttlSeconds int, scope *PresenceScope, securityLevel int, interactsWith []string, rootMetadata map[string]interface{}) PresenceRecord {
+func (r *PresenceRegistry) Register(name string, ttlSeconds int, scope *PresenceScope, securityLevel int, interactsWith []string, sdkURL string, rootMetadata map[string]interface{}) PresenceRecord {
 	now := time.Now()
 
 	r.mu.Lock()
@@ -68,6 +69,7 @@ func (r *PresenceRegistry) Register(name string, ttlSeconds int, scope *Presence
 	}
 	record.SecurityLevel = securityLevel
 	record.InteractsWith = interactsWith
+	record.SDKURL = sdkURL
 	record.RootMetadata = rootMetadata
 	if ttlSeconds > 0 {
 		record.ExpiresAt = now.Add(time.Duration(ttlSeconds) * time.Second)

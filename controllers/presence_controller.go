@@ -25,6 +25,8 @@ type PresenceRequest struct {
 	Scope *registry.PresenceScope `json:"scope"`
 	// SecurityLevel 为该服务的鉴权级别：0 无须 / 1 用户级 / 2 运维级。默认 0。
 	SecurityLevel int `json:"security_level"`
+	// SDKURL 为该服务 SDK 的 manifest.json 地址，可选。
+	SDKURL string `json:"sdk_url"`
 	// InteractsWith 声明与其他微服务的交互关系；隐式默认仅与主服务交互。
 	InteractsWith []string `json:"interacts_with"`
 	// RootMetadata 为微服务想要在根路径 (/) 返回的顶级元数据。
@@ -39,7 +41,7 @@ func (pc *PresenceController) Bonjour(c *gin.Context) {
 	}
 
 	name := strings.TrimSpace(req.Name)
-	record := pc.registry.Register(name, req.TTLSeconds, req.Scope, req.SecurityLevel, req.InteractsWith, req.RootMetadata)
+	record := pc.registry.Register(name, req.TTLSeconds, req.Scope, req.SecurityLevel, req.InteractsWith, req.SDKURL, req.RootMetadata)
 
 	var expiresAt any
 	if !record.ExpiresAt.IsZero() {
