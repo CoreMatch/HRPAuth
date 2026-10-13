@@ -128,7 +128,7 @@ func (os *OAuth2Service) upsertBuiltInSuperClient(tx *gorm.DB) error {
 		return err
 	}
 	values := map[string]any{
-		"client_secret": config.AppConfig.OAuth2.SuperClientSecret,
+		"client_secret": "(config)",
 		"name":          "HRPAuth Internal Super Client",
 		"type":          "confidential",
 		"grant_types":   grantTypesJSON,
@@ -144,7 +144,7 @@ func (os *OAuth2Service) upsertBuiltInSuperClient(tx *gorm.DB) error {
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		client = models.OAuth2Client{
 			ClientID:     config.AppConfig.OAuth2.SuperClientID,
-			ClientSecret: config.AppConfig.OAuth2.SuperClientSecret,
+			ClientSecret: "(config)",
 			Name:         "HRPAuth Internal Super Client",
 			Type:         "confidential",
 			GrantTypes:   grantTypesJSON,
@@ -167,6 +167,15 @@ func (os *OAuth2Service) AuthenticateClient(clientID, clientSecret string) (*mod
 	if err := database.DB.Where("client_id = ? AND is_active = 1", clientID).First(&client).Error; err != nil {
 		return nil, ErrOAuthInvalidClient
 	}
+
+	// 优先使用配置文件中的超级运维密钥校验内置 Super Client
+	if client.IsSuper && client.IsInternal && client.ClientID == config.AppConfig.OAuth2.SuperClientID {
+		if clientSecret != config.AppConfig.OAuth2.SuperClientSecret {
+			return nil, ErrOAuthInvalidClient
+		}
+		return &client, nil
+	}
+
 	if client.Type == "confidential" && client.ClientSecret != clientSecret {
 		return nil, ErrOAuthInvalidClient
 	}

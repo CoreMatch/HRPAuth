@@ -130,7 +130,13 @@ func forwardTo(c *gin.Context, target string) bool {
 		return false
 	}
 	req.URL.RawQuery = c.Request.URL.RawQuery
-	req.Header.Set("Content-Type", c.Request.Header.Get("Content-Type"))
+
+	// Forward all headers
+	for key, values := range c.Request.Header {
+		for _, value := range values {
+			req.Header.Add(key, value)
+		}
+	}
 	req.Header.Set("X-Request-Id", requestIDFrom(c))
 
 	resp, err := httpClient.Do(req)
