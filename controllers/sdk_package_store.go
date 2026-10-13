@@ -26,8 +26,8 @@ type SdkPackageMeta struct {
 	Size          int64                  `json:"size"`
 	UploadedAt    time.Time              `json:"uploaded_at"`
 	Routes        []SdkRouteMeta         `json:"routes,omitempty"`
-	Menu          *SdkMenuMeta           `json:"menu,omitempty"`
-	Dashboard     *SdkDashboardMeta      `json:"dashboard,omitempty"`
+	Menu          []SdkMenuMeta          `json:"menu,omitempty"`
+	Dashboard     []SdkDashboardMeta     `json:"dashboard,omitempty"`
 	Dependencies  map[string]string      `json:"dependencies,omitempty"`
 	RunScripts    bool                   `json:"run_scripts"`
 	ManifestJSON  map[string]interface{} `json:"-"`
@@ -256,11 +256,27 @@ func buildMeta(name string, data []byte, manifest map[string]interface{}, digest
 			}
 		}
 	}
-	if m, ok := manifest["menu"].(map[string]interface{}); ok {
-		meta.Menu = &SdkMenuMeta{Label: strFromMap(m, "label"), Path: strFromMap(m, "path")}
+	if m := manifest["menu"]; m != nil {
+		if items, ok := m.([]interface{}); ok {
+			for _, item := range items {
+				if im, ok := item.(map[string]interface{}); ok {
+					meta.Menu = append(meta.Menu, SdkMenuMeta{Label: strFromMap(im, "label"), Path: strFromMap(im, "path")})
+				}
+			}
+		} else if im, ok := m.(map[string]interface{}); ok {
+			meta.Menu = append(meta.Menu, SdkMenuMeta{Label: strFromMap(im, "label"), Path: strFromMap(im, "path")})
+		}
 	}
-	if d, ok := manifest["dashboard"].(map[string]interface{}); ok {
-		meta.Dashboard = &SdkDashboardMeta{Label: strFromMap(d, "label"), Path: strFromMap(d, "path")}
+	if d := manifest["dashboard"]; d != nil {
+		if items, ok := d.([]interface{}); ok {
+			for _, item := range items {
+				if id, ok := item.(map[string]interface{}); ok {
+					meta.Dashboard = append(meta.Dashboard, SdkDashboardMeta{Label: strFromMap(id, "label"), Path: strFromMap(id, "path")})
+				}
+			}
+		} else if id, ok := d.(map[string]interface{}); ok {
+			meta.Dashboard = append(meta.Dashboard, SdkDashboardMeta{Label: strFromMap(id, "label"), Path: strFromMap(id, "path")})
+		}
 	}
 	return meta
 }

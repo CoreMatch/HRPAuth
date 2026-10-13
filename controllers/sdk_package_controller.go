@@ -190,10 +190,10 @@ func publicMeta(meta *SdkPackageMeta) gin.H {
 	if len(meta.Routes) > 0 {
 		h["routes"] = meta.Routes
 	}
-	if meta.Menu != nil {
+	if len(meta.Menu) > 0 {
 		h["menu"] = meta.Menu
 	}
-	if meta.Dashboard != nil {
+	if len(meta.Dashboard) > 0 {
 		h["dashboard"] = meta.Dashboard
 	}
 	if len(meta.Dependencies) > 0 {
@@ -435,14 +435,42 @@ func validateManifest(m map[string]interface{}) error {
 		}
 	}
 
-	if menu, ok := m["menu"].(map[string]interface{}); ok {
-		if !seenPaths[strFromMap(menu, "path")] {
-			return fmt.Errorf("manifest menu.path must reference an entry in routes")
+	if menu := m["menu"]; menu != nil {
+		if items, ok := menu.([]interface{}); ok {
+			for _, item := range items {
+				im, ok := item.(map[string]interface{})
+				if !ok {
+					return fmt.Errorf("manifest menu entry must be an object")
+				}
+				if !seenPaths[strFromMap(im, "path")] {
+					return fmt.Errorf("manifest menu.path %q must reference an entry in routes", strFromMap(im, "path"))
+				}
+			}
+		} else if im, ok := menu.(map[string]interface{}); ok {
+			if !seenPaths[strFromMap(im, "path")] {
+				return fmt.Errorf("manifest menu.path %q must reference an entry in routes", strFromMap(im, "path"))
+			}
+		} else {
+			return fmt.Errorf("manifest menu must be an object or an array of objects")
 		}
 	}
-	if dash, ok := m["dashboard"].(map[string]interface{}); ok {
-		if !seenPaths[strFromMap(dash, "path")] {
-			return fmt.Errorf("manifest dashboard.path must reference an entry in routes")
+	if dash := m["dashboard"]; dash != nil {
+		if items, ok := dash.([]interface{}); ok {
+			for _, item := range items {
+				id, ok := item.(map[string]interface{})
+				if !ok {
+					return fmt.Errorf("manifest dashboard entry must be an object")
+				}
+				if !seenPaths[strFromMap(id, "path")] {
+					return fmt.Errorf("manifest dashboard.path %q must reference an entry in routes", strFromMap(id, "path"))
+				}
+			}
+		} else if id, ok := dash.(map[string]interface{}); ok {
+			if !seenPaths[strFromMap(id, "path")] {
+				return fmt.Errorf("manifest dashboard.path %q must reference an entry in routes", strFromMap(id, "path"))
+			}
+		} else {
+			return fmt.Errorf("manifest dashboard must be an object or an array of objects")
 		}
 	}
 	return nil
