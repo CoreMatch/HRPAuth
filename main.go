@@ -170,6 +170,7 @@ func main() {
 		api.POST("/reset-password", authCtrl.ResetPassword)
 		api.GET("/logout", authCtrl.Logout)
 		api.POST("/internal/verify-credentials", authCtrl.VerifyCredentials)
+		api.POST("/internal/verify-token", authCtrl.VerifyToken)
 		api.POST("/user", userInfoCtrl.GetUser)
 		api.DELETE("/user", userInfoCtrl.DeleteAccount)
 		api.GET("/user/deleted", userInfoCtrl.ListDeletedAccounts)

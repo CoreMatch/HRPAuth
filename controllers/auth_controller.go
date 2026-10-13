@@ -46,6 +46,39 @@ func isValidEmail(email string) bool {
 	return err == nil
 }
 
+func (ac *AuthController) VerifyToken(c *gin.Context) {
+	if !RequireAuthLevel(c, SecurityLevelOps) {
+		return
+	}
+
+	var req struct {
+		Token string `json:"token"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
+		return
+	}
+
+	oauth2Service := services.NewOAuth2Service()
+	tokenCtx, err := oauth2Service.ResolveAccessToken(req.Token)
+	if err != nil {
+		respondError(c, http.StatusUnauthorized, CodeOAuthInvalidGrant, "Invalid or expired token")
+		return
+	}
+
+	if tokenCtx.User == nil {
+		respondError(c, http.StatusUnauthorized, CodeOAuthInvalidGrant, "Token is not associated with a user")
+		return
+	}
+
+	respondOK(c, "Token verified", gin.H{
+		"uid":      tokenCtx.User.UID,
+		"uuid":     tokenCtx.User.UUID,
+		"email":    tokenCtx.User.Email,
+		"username": tokenCtx.User.Username,
+	})
+}
+
 func (ac *AuthController) VerifyCredentials(c *gin.Context) {
 	if !RequireAuthLevel(c, SecurityLevelOps) {
 		return
