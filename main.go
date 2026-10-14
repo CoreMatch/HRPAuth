@@ -75,6 +75,7 @@ func main() {
 	registry.GlobalRegistry = presenceRegistry
 	routeRegistry := controllers.NewRouteRegistry()
 	relayRegistry := controllers.NewRelayRegistry()
+	hookRegistry := controllers.NewHookRegistry()
 
 	// 从 Redis 恢复已持久化的微服务注册数据。
 	// 加载失败仅记录日志，不阻塞启动；运行时注册数据会在微服务下次心跳时自然补齐。
@@ -88,6 +89,9 @@ func main() {
 	if err := routeRegistry.Load(loadCtx); err != nil {
 		log.Printf("warning: failed to load route registry from redis: %v", err)
 	}
+	if err := hookRegistry.Load(loadCtx); err != nil {
+		log.Printf("warning: failed to load hook registry from redis: %v", err)
+	}
 	cancelLoad()
 
 	heartbeatWorker := registry.NewHeartbeatWorker(presenceRegistry)
@@ -96,6 +100,7 @@ func main() {
 	presenceCtrl := controllers.NewPresenceController(presenceRegistry)
 	routeCtrl := controllers.NewRouteController(routeRegistry, presenceRegistry)
 	relayCtrl := controllers.NewRelayController(relayRegistry, presenceRegistry)
+	hookCtrl := controllers.NewHookController(hookRegistry, presenceRegistry)
 	sdkPackageCtrl := controllers.NewSdkPackageController(controllers.NewSdkPackageStore())
 
 	r.Use(controllers.RelayMiddleware(relayRegistry, presenceRegistry))
@@ -107,7 +112,7 @@ func main() {
 	totpCtrl := controllers.NewTOTPController()
 	emailCtrl := controllers.NewEmailVerificationController()
 	captchaCtrl := controllers.NewCaptchaController()
-	oauth2Ctrl := controllers.NewOAuth2Controller()
+	oauth2Ctrl := controllers.NewOAuth2Controller(hookRegistry, presenceRegistry)
 	webauthnCtrl := controllers.NewWebAuthnController()
 	email2faCtrl := controllers.NewEmail2FAController()
 	userSecurityCtrl := controllers.NewUserSecurityController()
@@ -206,6 +211,7 @@ func main() {
 		api.POST("/services/presence", presenceCtrl.Bonjour)
 		api.POST("/services/auth-key", presenceCtrl.AuthKey)
 		api.POST("/services/route", routeCtrl.Register)
+		api.POST("/services/hook", hookCtrl.Register)
 		api.POST("/services/relay", relayCtrl.Register)
 		api.DELETE("/services/relay", relayCtrl.Delete)
 		api.GET("/services/relay", relayCtrl.List)

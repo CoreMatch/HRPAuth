@@ -80,6 +80,8 @@ const (
 	CodeRelayNotFound                  = "relay_not_found"
 	CodeSDKNotFound                    = "sdk_not_found"
 	CodeInsufficientAuthLevel          = "insufficient_auth_level"
+	CodeHookDenied                     = "hook_denied"
+	CodeHookFailed                     = "hook_failed"
 	CodeSdkPackageConflict             = "sdk_package_conflict"
 	CodeSdkPackageNotFound             = "sdk_package_not_found"
 	CodeSdkPackageInvalid              = "sdk_package_invalid"

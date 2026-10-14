@@ -269,6 +269,13 @@ func normalizeDest(dest string) string {
 	return "/" + strings.Trim(strings.TrimSpace(dest), "/")
 }
 
+// relayAllowsAnonymous reports whether the relay path belongs to the public
+// Yggdrasil surface and may be accessed without prior caller authentication.
+func relayAllowsAnonymous(rule RelayRule) bool {
+	dest := normalizeDest(rule.Dest)
+	return dest == "/yggdrasil-api" || strings.HasPrefix(dest, "/yggdrasil-api/")
+}
+
 // RelayMiddleware 是独立于编排层的 relay 转发处理器。
 // 命中 dest 前缀时把请求转发到对应微服务并短路；转发失败返回 502，
 // 不回退主服务（relay 路径归属微服务，主服务无对应处理）。

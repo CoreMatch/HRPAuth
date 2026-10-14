@@ -14,6 +14,7 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
 	appredis "github.com/lnb/HRPAuth-Backend-Go/redis"
+	"github.com/lnb/HRPAuth-Backend-Go/registry"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
 	"github.com/lnb/HRPAuth-Backend-Go/utils"
 )
@@ -21,6 +22,7 @@ import (
 type OAuth2Controller struct {
 	authService   *services.AuthService
 	oauth2Service *services.OAuth2Service
+	hookExecutor  *HookExecutor
 }
 
 type AuthorizationDecisionRequest struct {
@@ -56,10 +58,11 @@ type LoginTicketRequest struct {
 	Password string `json:"password"`
 }
 
-func NewOAuth2Controller() *OAuth2Controller {
+func NewOAuth2Controller(hookRegistry *HookRegistry, presence *registry.PresenceRegistry) *OAuth2Controller {
 	return &OAuth2Controller{
 		authService:   services.NewAuthService(),
 		oauth2Service: services.NewOAuth2Service(),
+		hookExecutor:  NewHookExecutor(hookRegistry, presence),
 	}
 }
 
@@ -69,8 +72,17 @@ func (oc *OAuth2Controller) LoginTicket(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
 		return
 	}
+
+	hookPayload := newAuthHookPayload(c, req.Email, req.Password)
+	if !oc.hookExecutor.Run(c, HookPhaseAuthInput, hookPayload) {
+		return
+	}
+	req.Password = hookPayload.Auth.Password
 	if !isValidEmail(req.Email) {
 		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
+		return
+	}
+	if !oc.hookExecutor.Run(c, HookPhaseAuthRisk, hookPayload) {
 		return
 	}
 
@@ -95,8 +107,26 @@ func (oc *OAuth2Controller) LoginTicket(c *gin.Context) {
 	hasWebAuthn := fullUser.WebAuthn2FAEnabled && webAuthnCount > 0
 	hasEmail2FA := fullUser.Email2FAEnabled
 	hasRecoveryKey := fullUser.RecoveryKeyEnabled && fullUser.RecoveryKey != ""
+	hookPayload.Auth.UserUUID = fullUser.UUID
+	hookPayload.Auth.AvailableFactors = availableSecondFactors(hasTOTP, hasWebAuthn, hasEmail2FA, hasRecoveryKey)
 
-	if !hasTOTP && !hasWebAuthn && !hasEmail2FA {
+	if !oc.hookExecutor.Run(c, HookPhaseAuthPostVerify, hookPayload) {
+		return
+	}
+
+	selectedFactor := strings.TrimSpace(hookPayload.Auth.RequiredSecondFactor)
+	if selectedFactor != "" {
+		if !containsString(hookPayload.Auth.AvailableFactors, selectedFactor) {
+			respondError(c, http.StatusForbidden, CodeHookDenied, "request denied by hook policy")
+			return
+		}
+		hasTOTP = selectedFactor == "totp"
+		hasWebAuthn = selectedFactor == "webauthn"
+		hasEmail2FA = selectedFactor == "email"
+		hasRecoveryKey = selectedFactor == "recovery_key"
+	}
+
+	if !hasTOTP && !hasWebAuthn && !hasEmail2FA && selectedFactor == "" {
 		issueAndRespondFirstPartyUserTokens(c, fullUser.UUID, "OAuth2 token issued", nil)
 		return
 	}
@@ -158,16 +188,28 @@ func (oc *OAuth2Controller) AuthorizeDecision(c *gin.Context) {
 		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
 		return
 	}
+	hookPayload := newAuthHookPayload(c, req.Email, req.Password)
+	if !oc.hookExecutor.Run(c, HookPhaseAuthInput, hookPayload) {
+		return
+	}
+	req.Password = hookPayload.Auth.Password
 
 	client, scopes, err := oc.oauth2Service.ValidateAuthorizationRequest(req.ClientID, req.RedirectURI, req.Scope, req.CodeChallenge, req.CodeChallengeMethod)
 	if err != nil {
 		oc.respondOAuthError(c, err)
 		return
 	}
+	if !oc.hookExecutor.Run(c, HookPhaseAuthRisk, hookPayload) {
+		return
+	}
 
 	user := oc.authService.VerifyCredentials(req.Email, req.Password, false)
 	if user == nil {
 		respondError(c, http.StatusUnauthorized, CodeInvalidCredentials, "Email or password incorrect")
+		return
+	}
+	hookPayload.Auth.UserUUID = user.UUID
+	if !oc.hookExecutor.Run(c, HookPhaseAuthPostVerify, hookPayload) {
 		return
 	}
 
@@ -327,4 +369,29 @@ func availableSecondFactors(hasTOTP bool, hasWebAuthn bool, hasEmail2FA bool, ha
 		factors = append(factors, "recovery_key")
 	}
 	return factors
+}
+
+func newAuthHookPayload(c *gin.Context, email string, password string) *HookRequestPayload {
+	return &HookRequestPayload{
+		Request: HookRequestContext{
+			ID:     requestIDFrom(c),
+			Path:   c.Request.URL.Path,
+			Method: c.Request.Method,
+		},
+		Auth: HookAuthContext{
+			Email:            strings.TrimSpace(email),
+			Password:         password,
+			PasswordEncoding: "plain",
+			RiskTags:         nil,
+		},
+	}
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
 }
