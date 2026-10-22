@@ -45,6 +45,21 @@ func CORSMiddleware() gin.HandlerFunc {
 	}
 }
 
+func DatabaseMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if database.DB == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{
+				"success": false,
+				"message": "Database connection is not established yet. Please try again later.",
+				"code":    "database_not_ready",
+			})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}
+
 func main() {
 	// Initialize startup controller to check/create config file
 	startupCtrl := controllers.NewStartupController()
@@ -63,15 +78,15 @@ func main() {
 		if err := services.NewOAuth2Service().EnsureBuiltInClients(); err != nil {
 			log.Printf("warning: failed to ensure OAuth2 built-in clients: %v", err)
 		}
+
+		oauth2CleanupCtrl := controllers.NewOAuth2CleanupController()
+		oauth2CleanupCtrl.Start(24 * time.Hour)
+
+		accountCleanupCtrl := controllers.NewAccountCleanupController()
+		accountCleanupCtrl.Start(5 * 24 * time.Hour)
 	})
 
 	redis.Init()
-
-	oauth2CleanupCtrl := controllers.NewOAuth2CleanupController()
-	oauth2CleanupCtrl.Start(24 * time.Hour)
-
-	accountCleanupCtrl := controllers.NewAccountCleanupController()
-	accountCleanupCtrl.Start(5 * 24 * time.Hour)
 
 	r := gin.Default()
 
@@ -157,6 +172,7 @@ func main() {
 	})
 
 	api := r.Group("")
+	api.Use(DatabaseMiddleware())
 	{
 		api.GET("/oauth/authorize", oauth2Ctrl.Authorize)
 		api.POST("/oauth/login-ticket", oauth2Ctrl.LoginTicket)

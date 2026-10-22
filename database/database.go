@@ -38,7 +38,7 @@ func connect() {
 			log.Printf("Failed to connect to database: %v. Retrying in %d seconds...", err, cfg.RetryIntervalSec)
 			retryCount++
 
-			if cfg.MaxRetries > 0 && retryCount >= cfg.MaxRetries {
+			if cfg.MaxRetries > 0 && retryCount > cfg.MaxRetries {
 				log.Printf("Reached maximum retry attempts (%d).", cfg.MaxRetries)
 				break
 			}
