@@ -31,6 +31,7 @@ type ConfigMigration struct {
 //   - "8":   decouple yggdrasil: core_api and yggdrasil_api sections introduced
 //   - "9":   top-level sdk_packages section introduced (compile-time SDK aggregation)
 //   - "10":  remove static internal_key from core_api and yggdrasil_api
+//   - "11":  add database connection retry settings
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
@@ -42,6 +43,7 @@ func configMigrations() []ConfigMigration {
 		{FromVersion: "7", ToVersion: "8", Migrate: migrateV7ToV8},
 		{FromVersion: "8", ToVersion: "9", Migrate: migrateV8ToV9},
 		{FromVersion: "9", ToVersion: "10", Migrate: migrateV9ToV10},
+		{FromVersion: "10", ToVersion: "11", Migrate: migrateV10ToV11},
 	}
 }
 
@@ -164,6 +166,27 @@ func migrateV9ToV10(cfg map[string]interface{}, tokenGen func() string) error {
 	}
 
 	cfg["version"] = "10"
+	return nil
+}
+
+func migrateV10ToV11(cfg map[string]interface{}, tokenGen func() string) error {
+	db, _ := cfg["database"].(map[string]interface{})
+	if db == nil {
+		db = map[string]interface{}{}
+	}
+
+	if _, exists := db["retry_interval_sec"]; !exists {
+		db["retry_interval_sec"] = 3
+	}
+	if _, exists := db["max_retries"]; !exists {
+		db["max_retries"] = 5
+	}
+	if _, exists := db["next_round_delay_min"]; !exists {
+		db["next_round_delay_min"] = 5
+	}
+
+	cfg["database"] = db
+	cfg["version"] = "11"
 	return nil
 }
 

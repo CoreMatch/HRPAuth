@@ -14,6 +14,7 @@ import (
 	"github.com/lnb/HRPAuth-Backend-Go/redis"
 	"github.com/lnb/HRPAuth-Backend-Go/registry"
 	"github.com/lnb/HRPAuth-Backend-Go/services"
+	"gorm.io/gorm"
 )
 
 func CORSMiddleware() gin.HandlerFunc {
@@ -54,9 +55,15 @@ func main() {
 	config.Load()
 	database.Init()
 
-	if err := startupCtrl.EnsureMigrations(); err != nil {
-		log.Fatalf("Failed to ensure database migrations: %v", err)
-	}
+	database.RegisterOnConnect(func(db *gorm.DB) {
+		if err := startupCtrl.EnsureMigrations(); err != nil {
+			log.Printf("warning: failed to ensure database migrations: %v", err)
+		}
+
+		if err := services.NewOAuth2Service().EnsureBuiltInClients(); err != nil {
+			log.Printf("warning: failed to ensure OAuth2 built-in clients: %v", err)
+		}
+	})
 
 	redis.Init()
 
@@ -116,10 +123,6 @@ func main() {
 	webauthnCtrl := controllers.NewWebAuthnController()
 	email2faCtrl := controllers.NewEmail2FAController()
 	userSecurityCtrl := controllers.NewUserSecurityController()
-
-	if err := services.NewOAuth2Service().EnsureBuiltInClients(); err != nil {
-		log.Fatalf("Failed to ensure OAuth2 built-in clients: %v", err)
-	}
 
 	r.GET("/", func(c *gin.Context) {
 		response := gin.H{

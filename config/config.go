@@ -32,9 +32,9 @@ type Config struct {
 // SDKPackagesConfig holds settings for the SDK package broker used by the
 // WebUI SDK handler (HA-WebUI-SDKHandler).
 type SDKPackagesConfig struct {
-	StorageDir       string
-	MaxPackageSize   int
-	MaxPackages      int
+	StorageDir     string
+	MaxPackageSize int
+	MaxPackages    int
 }
 
 type CoreAPIConfig struct {
@@ -71,11 +71,14 @@ type FrontendConfig struct {
 }
 
 type DatabaseConfig struct {
-	Host     string
-	DBName   string
-	User     string
-	Password string
-	Charset  string
+	Host              string
+	DBName            string
+	User              string
+	Password          string
+	Charset           string
+	RetryIntervalSec  int
+	MaxRetries        int
+	NextRoundDelayMin int
 }
 
 type VerificationCodeConfig struct {
@@ -138,7 +141,7 @@ type OAuth2Config struct {
 
 const ConfigFileName = "config.yaml"
 const ConfigFileDir = "./"
-const ConfigVersion = "10"
+const ConfigVersion = "11"
 
 var AppConfig *Config
 
@@ -233,12 +236,36 @@ func parseFrontendConfig(config map[string]interface{}) FrontendConfig {
 
 func parseDatabaseConfig(config map[string]interface{}) DatabaseConfig {
 	db, _ := config["database"].(map[string]interface{})
+
+	retryInterval := getInt(db, "retry_interval_sec")
+	if retryInterval == 0 {
+		retryInterval = 3
+	}
+
+	nextRoundDelay := getInt(db, "next_round_delay_min")
+	// If the key is present but value is 0, nextRoundDelay will be 0.
+	// We need to distinguish between "not set" and "set to 0".
+	// However, the user said "默认为5分钟，为0则不进行重试".
+	// So if it's missing or set to 0, we need to handle it.
+	// Actually, if it's missing, getInt returns 0.
+	if _, ok := db["next_round_delay_min"]; !ok {
+		nextRoundDelay = 5
+	}
+
+	maxRetries := getInt(db, "max_retries")
+	if _, ok := db["max_retries"]; !ok {
+		maxRetries = 5
+	}
+
 	return DatabaseConfig{
-		Host:     getString(db, "host"),
-		DBName:   getString(db, "db_name"),
-		User:     getString(db, "user"),
-		Password: getString(db, "password"),
-		Charset:  getString(db, "charset"),
+		Host:              getString(db, "host"),
+		DBName:            getString(db, "db_name"),
+		User:              getString(db, "user"),
+		Password:          getString(db, "password"),
+		Charset:           getString(db, "charset"),
+		RetryIntervalSec:  retryInterval,
+		MaxRetries:        maxRetries,
+		NextRoundDelayMin: nextRoundDelay,
 	}
 }
 
