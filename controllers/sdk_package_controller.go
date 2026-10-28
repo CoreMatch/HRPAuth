@@ -96,7 +96,8 @@ func (c *SdkPackageController) Upload(ctx *gin.Context) {
 }
 
 // List 处理 GET /services/sdk-packages：
-//   返回全部包元信息数组；设置 ETag（列表内容 sha256），配合 If-None-Match 返回 304。
+//
+//	返回全部包元信息数组；设置 ETag（列表内容 sha256），配合 If-None-Match 返回 304。
 func (c *SdkPackageController) List(ctx *gin.Context) {
 	if !RequireAuthLevel(ctx, SecurityLevelOps) {
 		return
@@ -196,6 +197,9 @@ func publicMeta(meta *SdkPackageMeta) gin.H {
 	if len(meta.Dashboard) > 0 {
 		h["dashboard"] = meta.Dashboard
 	}
+	if len(meta.CriticalOperations) > 0 {
+		h["critical_operations"] = meta.CriticalOperations
+	}
 	if len(meta.Dependencies) > 0 {
 		h["dependencies"] = meta.Dependencies
 	}
@@ -231,7 +235,7 @@ func classifyUploadError(err error) (int, string, string) {
 
 // 校验相关错误哨兵。
 var (
-	errNotArchive       = fmt.Errorf("not a supported archive")
+	errNotArchive        = fmt.Errorf("not a supported archive")
 	errMultipleManifests = fmt.Errorf("multiple root-level manifests")
 	errMissingManifest   = fmt.Errorf("missing manifest")
 	errIllegalPath       = fmt.Errorf("illegal path")
@@ -394,7 +398,7 @@ func parseManifest(raw []byte) (map[string]interface{}, error) {
 	return m, nil
 }
 
-// validateManifest 校验 manifest 字段（schema_version/name/version/routes/menu/dashboard）。
+// validateManifest 校验 manifest 字段（schema_version/name/version/routes/menu/dashboard/critical_operations）。
 func validateManifest(m map[string]interface{}) error {
 	if sv, ok := m["schema_version"].(float64); !ok || sv != 1 {
 		return fmt.Errorf("manifest schema_version must be 1")
@@ -471,6 +475,39 @@ func validateManifest(m map[string]interface{}) error {
 			}
 		} else {
 			return fmt.Errorf("manifest dashboard must be an object or an array of objects")
+		}
+	}
+	if operations := m["critical_operations"]; operations != nil {
+		if err := validateCriticalOperations(operations, seenPaths); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateCriticalOperations(value interface{}, routePaths map[string]bool) error {
+	var entries []interface{}
+	switch v := value.(type) {
+	case []interface{}:
+		entries = v
+	case map[string]interface{}:
+		entries = []interface{}{v}
+	default:
+		return fmt.Errorf("manifest critical_operations must be an object or an array of objects")
+	}
+
+	for _, entry := range entries {
+		item, ok := entry.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("manifest critical_operations entry must be an object")
+		}
+		label := strings.TrimSpace(strFromMap(item, "label"))
+		if label == "" {
+			return fmt.Errorf("manifest critical_operations.label is required")
+		}
+		path := strFromMap(item, "path")
+		if !routePaths[path] {
+			return fmt.Errorf("manifest critical_operations.path %q must reference an entry in routes", path)
 		}
 	}
 	return nil

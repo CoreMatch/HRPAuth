@@ -20,17 +20,18 @@ import (
 // ManifestJSON 保留原始 manifest，供校验与后续转发；不落盘为独立文件，
 // 而是从归档内 manifest.json 提取后与归档一并保存。
 type SdkPackageMeta struct {
-	Name          string                 `json:"name"`
-	Version       string                 `json:"version"`
-	Sha256        string                 `json:"sha256"`
-	Size          int64                  `json:"size"`
-	UploadedAt    time.Time              `json:"uploaded_at"`
-	Routes        []SdkRouteMeta         `json:"routes,omitempty"`
-	Menu          []SdkMenuMeta          `json:"menu,omitempty"`
-	Dashboard     []SdkDashboardMeta     `json:"dashboard,omitempty"`
-	Dependencies  map[string]string      `json:"dependencies,omitempty"`
-	RunScripts    bool                   `json:"run_scripts"`
-	ManifestJSON  map[string]interface{} `json:"-"`
+	Name               string                     `json:"name"`
+	Version            string                     `json:"version"`
+	Sha256             string                     `json:"sha256"`
+	Size               int64                      `json:"size"`
+	UploadedAt         time.Time                  `json:"uploaded_at"`
+	Routes             []SdkRouteMeta             `json:"routes,omitempty"`
+	Menu               []SdkMenuMeta              `json:"menu,omitempty"`
+	Dashboard          []SdkDashboardMeta         `json:"dashboard,omitempty"`
+	CriticalOperations []SdkCriticalOperationMeta `json:"critical_operations,omitempty"`
+	Dependencies       map[string]string          `json:"dependencies,omitempty"`
+	RunScripts         bool                       `json:"run_scripts"`
+	ManifestJSON       map[string]interface{}     `json:"-"`
 }
 
 // SdkRouteMeta 是 manifest.routes 的单条记录。
@@ -52,12 +53,19 @@ type SdkDashboardMeta struct {
 	Path  string `json:"path"`
 }
 
+// SdkCriticalOperationMeta 是 manifest.critical_operations。
+type SdkCriticalOperationMeta struct {
+	Label string `json:"label"`
+	Path  string `json:"path"`
+}
+
 // metaFileName 是每个包目录内的元信息文件。
 const metaFileName = ".meta.json"
 
 // SdkPackageStore 将 SDK 包归档持久化到磁盘：
-//   StorageDir/<name>/archive（原始归档）
-//   StorageDir/<name>/.meta.json（提取并校验后的元信息）
+//
+//	StorageDir/<name>/archive（原始归档）
+//	StorageDir/<name>/.meta.json（提取并校验后的元信息）
 //
 // 并发安全；列表按 name 排序返回。
 type SdkPackageStore struct {
@@ -276,6 +284,23 @@ func buildMeta(name string, data []byte, manifest map[string]interface{}, digest
 			}
 		} else if id, ok := d.(map[string]interface{}); ok {
 			meta.Dashboard = append(meta.Dashboard, SdkDashboardMeta{Label: strFromMap(id, "label"), Path: strFromMap(id, "path")})
+		}
+	}
+	if operations := manifest["critical_operations"]; operations != nil {
+		if items, ok := operations.([]interface{}); ok {
+			for _, item := range items {
+				if entry, ok := item.(map[string]interface{}); ok {
+					meta.CriticalOperations = append(meta.CriticalOperations, SdkCriticalOperationMeta{
+						Label: strFromMap(entry, "label"),
+						Path:  strFromMap(entry, "path"),
+					})
+				}
+			}
+		} else if entry, ok := operations.(map[string]interface{}); ok {
+			meta.CriticalOperations = append(meta.CriticalOperations, SdkCriticalOperationMeta{
+				Label: strFromMap(entry, "label"),
+				Path:  strFromMap(entry, "path"),
+			})
 		}
 	}
 	return meta
