@@ -84,4 +84,4 @@ All API documentation and development specifications are centralized in the HA-C
 
 ## License
 
-This project is licensed under the [MIT License](LICENSE).
+This project is licensed under the [AGPL 3.0 License](LICENSE).
