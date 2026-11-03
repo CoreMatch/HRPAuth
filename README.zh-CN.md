@@ -49,7 +49,7 @@ go build -o HRPAuth
 
 其余字段均有可用默认值，配置结构在启动时自动迁移（当前版本：**11**）。
 
-完整字段参考见 HA-Contract 的[配置文档](https://github.com/CoreMatch/HA-Contract/blob/main/docs/dev/HRPAuth/configuration.md)。注意：该文档标注的版本号仍为 "10"，代码实际版本为 **11**。
+完整字段参考见 HA-Contract 的[配置文档](https://github.com/CoreMatch/HA-Contract/blob/main/docs/dev/HRPAuth/configuration.md)。
 
 ## 部署
 
@@ -114,7 +114,7 @@ HA 生态内的其他服务可以登记到本服务并经由其接入；机制�
 
 **文档与门户**
 
-- [HRPAuth-Wiki](https://github.com/CoreMatch/HRPAuth-Wiki)：开发者 wiki（内容冻结于 2026-10-01，早于服务拆分）。
+- [HRPAuth-Wiki](https://github.com/CoreMatch/HRPAuth-Wiki)：开发者 wiki。
 - [MatchCore-Portal](https://github.com/CoreMatch/MatchCore-Portal)：更大生态的双语门户站点。
 
 **客户端**

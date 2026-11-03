@@ -49,7 +49,7 @@ Fields you **must** adjust before deploying:
 
 All other fields have working defaults, and the configuration schema is migrated automatically on startup (current version: **11**).
 
-For the complete field reference, see the [configuration guide in HA-Contract](https://github.com/CoreMatch/HA-Contract/blob/main/docs/dev/HRPAuth/configuration.md). Note: that document is still labeled schema version "10"; the actual current version in code is **11**.
+For the complete field reference, see the [configuration guide in HA-Contract](https://github.com/CoreMatch/HA-Contract/blob/main/docs/dev/HRPAuth/configuration.md).
 
 ## Deployment
 
@@ -114,7 +114,7 @@ The business API contract (OpenAPI definition and error codes) is maintained in 
 
 **Documentation & portal**
 
-- [HRPAuth-Wiki](https://github.com/CoreMatch/HRPAuth-Wiki): Developer wiki (content frozen since 2026-10-01, predating the service split).
+- [HRPAuth-Wiki](https://github.com/CoreMatch/HRPAuth-Wiki): Developer wiki.
 - [MatchCore-Portal](https://github.com/CoreMatch/MatchCore-Portal): Bilingual portal site of the wider ecosystem.
 
 **Client**
