@@ -53,13 +53,23 @@ For the complete field reference, see the [configuration guide in HA-Contract](h
 
 ## Deployment
 
-HRPAuth ships as a single static binary — there is no Docker image.
+### Single binary
 
 ```bash
 ./build.sh   # = go build -o ./build/HRPAuth
 ```
 
 Pre-built binaries for six platforms are kept under [`build/`](build): darwin / linux / windows × amd64 / arm64.
+
+### Container image
+
+A multi-stage [Dockerfile](Dockerfile) is provided:
+
+```bash
+docker build -t hrpauth .
+```
+
+The image runs the same binary as a non-root user and exposes port `2778`. The [entrypoint](docker-entrypoint.sh) can render a configuration template from environment variables before startup (`CONFIG_TEMPLATE` / `RENDERED_CONFIG`).
 
 ## Features
 

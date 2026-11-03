@@ -53,13 +53,23 @@ go build -o HRPAuth
 
 ## 部署
 
-HRPAuth 以单一静态二进制交付，没有 Docker 镜像。
+### 单二进制
 
 ```bash
 ./build.sh   # = go build -o ./build/HRPAuth
 ```
 
 [`build/`](build) 目录下保留了六个平台的预编译产物：darwin / linux / windows × amd64 / arm64。
+
+### 容器镜像
+
+仓库提供了多阶段构建的 [Dockerfile](Dockerfile)：
+
+```bash
+docker build -t hrpauth .
+```
+
+镜像以非 root 用户运行同一二进制，暴露端口 `2778`。[入口脚本](docker-entrypoint.sh)可在启动前用环境变量渲染配置模板（`CONFIG_TEMPLATE` / `RENDERED_CONFIG`）。
 
 ## 功能
 
