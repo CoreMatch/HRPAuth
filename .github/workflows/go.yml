@@ -1,0 +1,35 @@
+# Minimal Go CI: build, vet, and test on every push/PR to the mainline.
+#
+# The DB-backed tests use SQLite via gorm.io/driver/sqlite (mattn/go-sqlite3),
+# which requires CGO, so CGO_ENABLED is set to 1. No external MySQL/Redis
+# service containers are needed: those tests open a throwaway SQLite file
+# under t.TempDir() and never dial a network service.
+name: Go
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    env:
+      CGO_ENABLED: 1
+    steps:
+    - uses: actions/checkout@v7
+
+    - name: Set up Go
+      uses: actions/setup-go@v7
+      with:
+        go-version-file: go.mod
+
+    - name: Build
+      run: go build ./...
+
+    - name: Vet
+      run: go vet ./...
+
+    - name: Test
+      run: go test ./...
