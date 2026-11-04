@@ -1,0 +1,74 @@
+# ADR-0002: Account Model with Four Second Factors
+
+- **Status**: accepted
+- **Date**: 2026-11-04
+
+## Context
+
+A general-purpose authentication core needs more than password login. The core
+had to support several independent second-factor mechanisms and let a user hold
+any combination of them, while keeping login flow logic in one place.
+
+## Decision
+
+The `users` model carries per-factor state and the core implements **four**
+second factors:
+
+1. **TOTP** — `TOTP` secret + `2FA` toggle column; setup/toggle in
+   `controllers/totp_controller.go`, verification in
+   `controllers/user_security_controller.go` (`verifyTOTP`, 30s window).
+2. **WebAuthn** — `WebAuthn2FAEnabled` flag plus a `webauthn_credentials`
+   table; registration/second-factor flows in
+   `controllers/webauthn_controller.go`.
+3. **Email 2FA** — `Email2FAEnabled` flag; one-time codes sent/verified in
+   `controllers/email_2fa_controller.go` (code deleted after use).
+4. **Recovery key** — `RecoveryKey` (bcrypt hash) + `RecoveryKeyEnabled`;
+   generated as 4×4 uppercase groups, plaintext shown exactly once.
+
+A single combined status endpoint reports all factors; the older per-factor
+status endpoints were removed.
+
+**Recovery key is a backup recovery method, not an active login MFA factor.**
+Direct token issuance is blocked only when TOTP/WebAuthn/Email-2FA is enabled
+and no factor was selected; merely having a recovery key no longer forces the
+2FA flow.
+
+## Consequences
+
+- A user with only a recovery key configured logs in directly; the recovery key
+  remains available as an optional factor that hook policies may still require.
+- The recovery key plaintext is returned once and stored only as a bcrypt hash;
+  losing it requires regeneration.
+- Cost/limitation: `verifyAnyFactor`'s email-code branch does not re-check
+  `Email2FAEnabled` (design intent not verified).
+- Combining factors is additive state on one row; there is no per-factor
+  enrollment table except WebAuthn credentials.
+
+## Evidence
+
+- Model fields: `models/models.go:20-25` (`TOTP`, `TwoFA`/column `2FA`,
+  `WebAuthn2FAEnabled`, `Email2FAEnabled`, `RecoveryKey`,
+  `RecoveryKeyEnabled`); WebAuthn credential table `models/models.go:105-119`;
+  DDL `database/migrations/000001_baseline.up.sql:14-19`.
+- TOTP: `controllers/totp_controller.go:45` (`SetupTOTP`), `:141` (`Toggle2FA`),
+  `:159` (`Update("2FA", ...)`); verify `controllers/user_security_controller.go:434-438`.
+- WebAuthn: `controllers/webauthn_controller.go:81,146` (register begin/finish),
+  `:245` (`Toggle2FA`), `:322,361` (second-factor begin/finish); login gating
+  `controllers/oauth2_controller.go:102-107`.
+- Email 2FA: `controllers/email_2fa_controller.go:41` (`SendCode`), `:107`
+  (`VerifyCode`), `:156` (`Toggle`, requires verified email `:169-171`).
+- Recovery key: `controllers/user_security_controller.go:184` (create, plaintext
+  returned once `:196-201`), `:212` (regenerate), `:248` (revoke), `:279`
+  (verify via login ticket), `:360-367` (`generateRecoveryKey`).
+- Combined status endpoint: `controllers/user_security_controller.go:328`
+  (`GetTwoFactorStatus`, fields `:351-357`), route `main.go:211`; commit
+  `e846507` removed the three separate status endpoints.
+- Recovery key excluded from direct-issuance gating:
+  `controllers/oauth2_controller.go:129`; commit `977bd12` ("recovery key is a
+  backup recovery method rather than an active login MFA factor"). Recovery key
+  still listed for hook policy via `availableSecondFactors`
+  (`controllers/oauth2_controller.go:357-372`).
+- Factor dispatch: `controllers/user_security_controller.go:373-428`
+  (`verifyAnyFactor` branches: TOTP / email / WebAuthn / recovery key).
+- Commits: `9777cf6` (webauthn 2fa field), `d08f523` (recovery key status),
+  `e846507`, `977bd12`.
