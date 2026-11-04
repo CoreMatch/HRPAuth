@@ -18,7 +18,7 @@ HRPAuth ships **two deployment forms**:
    prebuilt binaries for six platforms (darwin/linux/windows × amd64/arm64)
    are kept under `build/`.
 2. **Container image** — a multi-stage `Dockerfile`: builder stage
-   `golang:1.26-alpine` producing a static binary, runtime stage `alpine:3.22`
+   `golang:1.26.4-alpine` producing a static binary, runtime stage `alpine:3.22`
    running as a non-root user (uid 10001), `EXPOSE 2778`, with an entrypoint
    that can render `config.yaml` from environment variables via `envsubst`
    (`CONFIG_TEMPLATE`/`RENDERED_CONFIG`) to support compose orchestration.
@@ -49,7 +49,7 @@ database_not_ready` instead of failing.
   `CONFIG_TEMPLATE`/`RENDERED_CONFIG` set); compose orchestration described in
   `README.md:68-95`.
 - Startup flow: `main.go:63` (`main`), `:65-71` (config load + async DB init),
-  `:73-87` (OnConnect callback), `:89` (redis), `:258-260` (`r.Run`).
+  `:73-87` (OnConnect callback), `:89` (redis), `:259-261` (`r.Run`).
 - DB retry logic: `database/database.go:16-18` (`Init` goroutine), `:20-57`
   (`connect` retry loop, `RetryIntervalSec`/`MaxRetries`/`NextRoundDelayMin`);
   defaults `config/config.go:237-270`; commits `8295bb4`, `b629c78`.

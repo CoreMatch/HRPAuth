@@ -47,7 +47,7 @@ They are not part of this repository.
     (`config/migrations.go:410` `migrateV7ToV8`, `:437`
     `delete(cfg, "yggdrasil")`).
   - `39d380d` — deleted `clients/yggdrasil_client.go` (-168) and tests.
-- Current route table has no yggdrasil/texture/mojang endpoint: `main.go:177-243`.
+- Current route table has no yggdrasil/texture/mojang endpoint: `main.go:177-244`.
 - Integration seams still present: `config/config.go:28,43-52`
   (`YggdrasilAPIConfig{BaseURL}`), `registry/heartbeat.go:42-57` (heartbeat to
   Yggdrasil-API `/internal/heartbeat`), `controllers/relay_controller.go:272-277`
