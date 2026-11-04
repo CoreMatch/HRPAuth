@@ -54,36 +54,56 @@ pulling side (SDKHandler), not here.
 
 ## Evidence
 
-- Registry instantiation and Redis restore: `main.go:96-100` (instantiate),
-  `:104-116` (restore from Redis).
-- PresenceRegistry: `registry/presence.go:44-53` (struct), `:55-81` (Register),
-  `:83-98` (RegisterAuthKey), `:125-150` (persist to Redis), `:189-203` (Get
-  with lazy expiry); heartbeat `registry/heartbeat.go:35-77`; entrypoints
-  `controllers/presence_controller.go:34` (Bonjour), `:57-80` (AuthKey); routes
-  `main.go:231-232`.
-- RouteRegistry: `controllers/route_controller.go:38-45` (struct), `:49-55`
-  (Upsert), `:106-113` (MatchPre/Post), `:138-154` (MatchPath wildcard),
-  `:172-194` (Register requires presence `:180-183`).
-- RelayRegistry: `controllers/relay_controller.go:37-44` (struct), `:48-67`
-  (Upsert), `:172-199` (longest-prefix Match), `:20` (30-day TTL), routes
-  `main.go:235-237`.
-- HookRegistry: `controllers/hook_controller.go:69-76` (struct), `:21-23`
-  (phases), `:25-27` (capabilities), `:134-155` (priority Match), route
-  `main.go:234`.
-- Middleware mounting: `main.go:128-129`. RelayMiddleware
-  `controllers/relay_controller.go:283-316` (skip `/services/*` `:286-289`,
-  auth by security_level `:297`, 502 no-fallback `:313`). Orchestration
-  `controllers/orchestration_middleware.go:48-98` (fail-open `:59-73`, async
-  post on 2xx `:82-96`), header forwarding `:134-139`.
-- Anonymous relay: `controllers/relay_controller.go:272-277`
-  (`relayAllowsAnonymous`; no production caller — the only reference is the
-  unit test `controllers/relay_controller_test.go:5-40`); security-level
-  passthrough `controllers/auth_level.go:13,52-55`.
-- SDK package store: `main.go:239-244` (routes; comment "satellite 上传，
-  SDKHandler 拉取"); archive extraction `controllers/sdk_package_controller.go:255-265,289-339,342-377`;
-  path safety `:269-286`; whole-archive download only
-  `controllers/sdk_package_controller.go:143-161`, atomic put
-  `controllers/sdk_package_store.go:187-241`.
+- Registry instantiation and Redis restore: `main.go::NewPresenceRegistry`,
+  `main.go::NewRouteRegistry`, `main.go::NewRelayRegistry`,
+  `main.go::NewHookRegistry` (instantiate), `main.go:L104-L116` (restore from
+  Redis).
+- PresenceRegistry: `registry/presence.go::PresenceRegistry` (struct),
+  `registry/presence.go::Register`, `registry/presence.go::RegisterAuthKey`,
+  `registry/presence.go::persist` (persist to Redis),
+  `registry/presence.go::Get` (Get with lazy expiry); heartbeat
+  `registry/heartbeat.go::CheckAll`, `registry/heartbeat.go::checkService`;
+  entrypoints `controllers/presence_controller.go::Bonjour` (Bonjour),
+  `controllers/presence_controller.go::AuthKey` (AuthKey); routes
+  `main.go::Bonjour`, `main.go::AuthKey`.
+- RouteRegistry: `controllers/route_controller.go::RouteRegistry` (struct),
+  `controllers/route_controller.go::Upsert`,
+  `controllers/route_controller.go::MatchPre` /
+  `controllers/route_controller.go::MatchPost`,
+  `controllers/route_controller.go::MatchPath` (wildcard),
+  `controllers/route_controller.go::Register` (requires presence).
+- RelayRegistry: `controllers/relay_controller.go::RelayRegistry` (struct),
+  `controllers/relay_controller.go::Upsert`,
+  `controllers/relay_controller.go::Match` (longest-prefix),
+  `controllers/relay_controller.go::relayTTL` (30-day TTL), routes
+  `main.go::relayCtrl`.
+- HookRegistry: `controllers/hook_controller.go::HookRegistry` (struct),
+  `controllers/hook_controller.go::HookPhaseAuthInput` (phases),
+  `controllers/hook_controller.go::HookCapabilityObserve` (capabilities),
+  `controllers/hook_controller.go::Match` (priority Match), route
+  `main.go::hookCtrl`.
+- Middleware mounting: `main.go::RelayMiddleware`,
+  `main.go::OrchestrationMiddleware`. RelayMiddleware
+  `controllers/relay_controller.go::RelayMiddleware` (skip `/services/*`,
+  auth by security_level via `controllers/auth_level.go::RequireAuthLevel`,
+  502 no-fallback). Orchestration
+  `controllers/orchestration_middleware.go::OrchestrationMiddleware`
+  (fail-open, async post on 2xx), header forwarding
+  `controllers/orchestration_middleware.go::forwardTo`.
+- Anonymous relay: `controllers/relay_controller.go::relayAllowsAnonymous`
+  (no production caller — the only reference is the unit test
+  `controllers/relay_controller_test.go::TestRelayAllowsAnonymous`);
+  security-level passthrough `controllers/auth_level.go::SecurityLevelNone`,
+  `controllers/auth_level.go::RequireAuthLevel`.
+- SDK package store: `main.go::sdkPackageCtrl` (routes; comment "satellite
+  上传，SDKHandler 拉取"); archive extraction
+  `controllers/sdk_package_controller.go::validateAndExtractManifest`,
+  `controllers/sdk_package_controller.go::extractFromTarGz`,
+  `controllers/sdk_package_controller.go::extractFromZip`; path safety
+  `controllers/sdk_package_controller.go::sanitizeArchivePath`;
+  whole-archive download only
+  `controllers/sdk_package_controller.go::Download`, atomic put
+  `controllers/sdk_package_store.go::Put`.
 - Commits: `1545da2` (extract presence registry, auth overhaul), `024bc3a`
   (anonymous relay + root endpoint), `1a3103a` (relay/forward logging),
   `7c11dd2` (sdk packages), `6d9324a` (directory entries in archives),
