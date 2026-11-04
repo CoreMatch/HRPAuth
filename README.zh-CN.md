@@ -36,20 +36,14 @@ go build -o HRPAuth
 
 ## 配置
 
-部署前**必须**调整的字段：
+首次启动时服务会生成带默认值的 `config.yaml`。投入生产前至少调整
+`database`、`redis`、`smtp`、`server.port`、`callback.url`、`frontend.url`，
+然后重启。
 
-| 字段 | 用途 |
-|---|---|
-| `database` | MySQL 连接（主机、库名、用户、口令） |
-| `redis` | Redis 连接 |
-| `smtp` | 发送验证邮件的邮件服务器 |
-| `server.port` | HTTP 监听端口 |
-| `callback.url` | 本服务对外访问地址 |
-| `frontend.url` | Web 前端（HRPAuth-WebUI）地址 |
-
-其余字段均有可用默认值，配置结构在启动时自动迁移（当前版本：**11**）。
-
-完整字段参考见本仓库英文 [README 的 Configuration 一节](README.md#configuration)（含配置 schema 版本表与数据库迁移说明）。
+- 完整配置参考（schema 版本、全部字段、默认值）：
+  [SamuelWiki — HRPAuth 配置与接口](https://github.com/SamuelCheston/SamuelWiki/blob/main/docs/zh/projects/hrpauth/configuration.md)
+- 数据库迁移（命令、baseline 布局、规则）：
+  [SamuelWiki — HRPAuth 数据库迁移](https://github.com/SamuelCheston/SamuelWiki/blob/main/docs/zh/projects/hrpauth/database-migrations.md)
 
 ## 部署
 
