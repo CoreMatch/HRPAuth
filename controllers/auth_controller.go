@@ -66,16 +66,26 @@ func (ac *AuthController) VerifyToken(c *gin.Context) {
 		return
 	}
 
+	if tokenCtx.IsService {
+		respondOK(c, "Token verified", gin.H{
+			"is_service": true,
+			"scopes":     tokenCtx.Scopes,
+		})
+		return
+	}
+
 	if tokenCtx.User == nil {
 		respondError(c, http.StatusUnauthorized, CodeOAuthInvalidGrant, "Token is not associated with a user")
 		return
 	}
 
 	respondOK(c, "Token verified", gin.H{
-		"uid":      tokenCtx.User.UID,
-		"uuid":     tokenCtx.User.UUID,
-		"email":    tokenCtx.User.Email,
-		"username": tokenCtx.User.Username,
+		"uid":        tokenCtx.User.UID,
+		"uuid":       tokenCtx.User.UUID,
+		"email":      tokenCtx.User.Email,
+		"username":   tokenCtx.User.Username,
+		"is_service": false,
+		"scopes":     tokenCtx.Scopes,
 	})
 }
 
@@ -101,6 +111,96 @@ func (ac *AuthController) VerifyCredentials(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, userInfo)
+}
+
+// ClaimUserInternal handles POST /internal/claim-user. It provisions the core
+// user for a proxy-registered game account that is being claimed through
+// HRPAuth-Yggdrasil-API (POST /admin/claim-user): the caller (a satellite
+// service with ops-level auth) supplies username/email/password and this
+// endpoint creates the matching core user with verified=true, restoring the
+// pre-split claim semantics (email uniqueness enforced, cbh flip happens on
+// the game side).
+//
+// Idempotency: if the username already belongs to a user with the same
+// email, that user is returned again (a retried claim after a game-side
+// failure must not strand the provisioned core user). The same username
+// with a different email is a conflict.
+func (ac *AuthController) ClaimUserInternal(c *gin.Context) {
+	if !RequireAuthLevel(c, SecurityLevelOps) {
+		return
+	}
+
+	var req struct {
+		Username string `json:"username"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
+		return
+	}
+
+	username := strings.TrimSpace(req.Username)
+	if len(username) < 3 {
+		respondError(c, http.StatusBadRequest, CodeUsernameTooShort, "Username too short")
+		return
+	}
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if !isValidEmail(email) {
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email")
+		return
+	}
+	if len(req.Password) < 6 {
+		respondError(c, http.StatusBadRequest, CodePasswordTooShort, "Password too short")
+		return
+	}
+
+	// Idempotency first: a retried claim (username + same email) must map to
+	// the already-provisioned user instead of tripping the email uniqueness
+	// check below.
+	var existing models.User
+	if err := database.DB.Where("username = ?", username).First(&existing).Error; err == nil {
+		if existing.Email == email {
+			respondOK(c, "User claimed", gin.H{"uid": existing.UID, "uuid": existing.UUID})
+			return
+		}
+		respondError(c, http.StatusConflict, CodeUsernameAlreadyBound, "Username already bound")
+		return
+	}
+
+	// Email uniqueness across all core users (restored pre-split rule).
+	var emailCount int64
+	database.DB.Model(&models.User{}).Where("email = ?", email).Count(&emailCount)
+	if emailCount > 0 {
+		respondError(c, http.StatusConflict, CodeEmailAlreadyRegistered, "Email already registered")
+		return
+	}
+
+	hash, err := utils.HashPassword(req.Password)
+	if err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Password hashing failed")
+		return
+	}
+
+	var maxUID uint
+	database.DB.Model(&models.User{}).Select("COALESCE(MAX(uid), 0)").Scan(&maxUID)
+	now := time.Now()
+	user := models.User{
+		UID:        maxUID + 1,
+		UUID:       utils.GenerateUnsignedUUID(),
+		Email:      email,
+		Username:   username,
+		Password:   hash,
+		LastSignAt: &now,
+		RegisterAt: &now,
+		Verified:   true,
+	}
+	if err := database.DB.Create(&user).Error; err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to create user")
+		return
+	}
+
+	respondOK(c, "User claimed", gin.H{"uid": user.UID, "uuid": user.UUID})
 }
 
 // Register handles POST /register.
