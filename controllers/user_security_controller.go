@@ -388,12 +388,18 @@ func (usc *UserSecurityController) verifyAnyFactor(c *gin.Context, user *models.
 
 	// 2. Email Code
 	if req.EmailCode != "" {
-		storedCode, found := usc.codeStore.Get(user.Email)
-		if found && storedCode == req.EmailCode {
-			anyFactorVerified = true
-			usc.codeStore.Delete(user.Email)
+		if user.Email2FAEnabled && user.Email != "" {
+			storedCode, found := usc.codeStore.Get(user.Email)
+			if found && storedCode == req.EmailCode {
+				anyFactorVerified = true
+				usc.codeStore.Delete(user.Email)
+			} else {
+				respondError(c, http.StatusUnauthorized, CodeVerificationCodeInvalid, "Invalid or expired email verification code")
+				c.Abort()
+				return false
+			}
 		} else {
-			respondError(c, http.StatusUnauthorized, CodeVerificationCodeInvalid, "Invalid or expired email verification code")
+			respondError(c, http.StatusBadRequest, CodeEmail2FANotConfigured, "Email 2FA not configured")
 			c.Abort()
 			return false
 		}
