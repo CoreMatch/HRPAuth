@@ -33,8 +33,8 @@ They are not part of this repository.
 
 ## Evidence
 
-- Positioning statement: `README.md:5` ("general-purpose authentication core
-  service and the OAuth2 authorization center"), `README.md:7` (split-out note
+- Positioning statement: `README.md:L5` ("general-purpose authentication core
+  service and the OAuth2 authorization center"), `README.md:L7` (split-out note
   with date 2026-10-06 and target services).
 - Removal commits (verified via `git show --stat`):
   - `9ab4e64` "strip legacy Yggdrasil stack" — deleted
@@ -44,13 +44,15 @@ They are not part of this repository.
     `services/profile_key_service.go` (-282), ~-4050 lines total.
   - `087030f` "remove Minecraft logic" — added migration
     `000012_remove_minecraft_logic` and config v7→8 migration
-    (`config/migrations.go:410` `migrateV7ToV8`, `:437`
+    (`config/migrations.go::migrateV7ToV8`, which runs
     `delete(cfg, "yggdrasil")`).
   - `39d380d` — deleted `clients/yggdrasil_client.go` (-168) and tests.
-- Current route table has no yggdrasil/texture/mojang endpoint: `main.go:177-244`.
-- Integration seams still present: `config/config.go:28,43-52`
-  (`YggdrasilAPIConfig{BaseURL}`), `registry/heartbeat.go:42-57` (heartbeat to
-  Yggdrasil-API `/internal/heartbeat`), `controllers/relay_controller.go:272-277`
+- Current route table has no yggdrasil/texture/mojang endpoint:
+  `main.go:L185-L256`.
+- Integration seams still present: `config/config.go::YggdrasilAPIConfig`
+  (`YggdrasilAPIConfig{BaseURL}`, held by `config/config.go::Config`),
+  `registry/heartbeat.go::checkService` (heartbeat to Yggdrasil-API
+  `/internal/heartbeat`), `controllers/relay_controller.go::relayAllowsAnonymous`
   (anonymous relay for `/yggdrasil-api` prefix).
 - Not verified: the exact set of columns removed by migration `000012` (the file
   is no longer in the current tree after the baseline squash; its prior

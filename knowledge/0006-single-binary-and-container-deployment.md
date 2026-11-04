@@ -40,19 +40,23 @@ database_not_ready` instead of failing.
 
 ## Evidence
 
-- Single binary: `README.md:50-56` ("Single binary" + `build.sh`); prebuilt
-  binaries present under `build/`; `README.zh-CN.md:50`.
-- Container image: `Dockerfile:2-10` (builder `golang:${GO_VERSION}-alpine`,
-  static build), `:12-14,22` (runtime `alpine:3.22`, non-root uid 10001),
-  `:21` (`EXPOSE 2778`), `:23-24` (entrypoint/cmd); introduced by `7c391d8`.
-- Config rendering for compose: `docker-entrypoint.sh:6-8` (`envsubst` when
-  `CONFIG_TEMPLATE`/`RENDERED_CONFIG` set); compose orchestration described in
-  `README.md:68-95`.
-- Startup flow: `main.go:63` (`main`), `:65-71` (config load + async DB init),
-  `:73-87` (OnConnect callback), `:89` (redis), `:259-261` (`r.Run`).
-- DB retry logic: `database/database.go:16-18` (`Init` goroutine), `:20-57`
-  (`connect` retry loop, `RetryIntervalSec`/`MaxRetries`/`NextRoundDelayMin`);
-  defaults `config/config.go:237-270`; commits `8295bb4`, `b629c78`.
-- 503 middleware: `main.go:48-61` (`DatabaseMiddleware`), mounted `main.go:175`.
+- Single binary: `README.md:L50-L56` ("Single binary" + `build.sh`); prebuilt
+  binaries present under `build/`; `README.zh-CN.md:L50`.
+- Container image: `Dockerfile:L2-L10` (builder `golang:${GO_VERSION}-alpine`,
+  static build), `Dockerfile:L12-L14` + `Dockerfile:L22` (runtime
+  `alpine:3.22`, non-root uid 10001), `Dockerfile:L21` (`EXPOSE 2778`),
+  `Dockerfile:L23-L24` (entrypoint/cmd); introduced by `7c391d8`.
+- Config rendering for compose: `docker-entrypoint.sh::envsubst` (`envsubst`
+  when `CONFIG_TEMPLATE`/`RENDERED_CONFIG` set); compose orchestration
+  described in `README.md:L68-L95`.
+- Startup flow: `main.go::main`, `main.go:L65-L71` (config load + async DB
+  init), `main.go::RegisterOnConnect` (OnConnect callback), `main.go:L89`
+  (redis), `main.go:L272` (`r.Run`).
+- DB retry logic: `database/database.go::Init` (`Init` goroutine),
+  `database/database.go::connect` (`connect` retry loop,
+  `RetryIntervalSec`/`MaxRetries`/`NextRoundDelayMin`); defaults
+  `config/config.go::parseDatabaseConfig`; commits `8295bb4`, `b629c78`.
+- 503 middleware: `main.go::DatabaseMiddleware` (definition and mount on the
+  API group).
 - Not verified: none material; the six-platform binary set was observed in the
   working tree.
