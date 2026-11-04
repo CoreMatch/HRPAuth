@@ -53,31 +53,45 @@ and no factor was selected; merely having a recovery key no longer forces the
 
 ## Evidence
 
-- Model fields: `models/models.go:20-25` (`TOTP`, `TwoFA`/column `2FA`,
+- Model fields: `models/models.go::User` (`TOTP`, `TwoFA`/column `2FA`,
   `WebAuthn2FAEnabled`, `Email2FAEnabled`, `RecoveryKey`,
-  `RecoveryKeyEnabled`); WebAuthn credential table `models/models.go:105-119`;
-  DDL `database/migrations/000001_baseline.up.sql:14-19`.
-- TOTP: `controllers/totp_controller.go:45` (`SetupTOTP`), `:141` (`Toggle2FA`),
-  `:159` (`Update("2FA", ...)`); verify `controllers/user_security_controller.go:440-452`.
-- WebAuthn: `controllers/webauthn_controller.go:81,146` (register begin/finish),
-  `:245` (`Toggle2FA`), `:322,361` (second-factor begin/finish); login gating
-  `controllers/oauth2_controller.go:102-107`.
-- Email 2FA: `controllers/email_2fa_controller.go:41` (`SendCode`), `:107`
-  (`VerifyCode`), `:156` (`Toggle`, requires verified email `:169-171`).
-- Recovery key: `controllers/user_security_controller.go:184` (create, plaintext
-  returned once `:196-201`), `:212` (regenerate), `:248` (revoke), `:279`
-  (verify via login ticket), `:360-367` (`generateRecoveryKey`).
-- Combined status endpoint: `controllers/user_security_controller.go:328`
-  (`GetTwoFactorStatus`, fields `:351-357`), route `main.go:212`; commit
-  `e846507` removed the three separate status endpoints.
+  `RecoveryKeyEnabled`); WebAuthn credential table
+  `models/models.go::WebAuthnCredential`; DDL
+  `database/migrations/000001_baseline.up.sql::recovery_key_enabled` (users
+  table 2FA columns).
+- TOTP: `controllers/totp_controller.go::SetupTOTP`,
+  `controllers/totp_controller.go::Toggle2FA` (`Update("2FA", ...)`); verify
+  `controllers/user_security_controller.go::verifyTOTP`.
+- WebAuthn: `controllers/webauthn_controller.go::BeginRegistration` /
+  `controllers/webauthn_controller.go::FinishRegistration` (register
+  begin/finish), `controllers/webauthn_controller.go::Toggle2FA`,
+  `controllers/webauthn_controller.go::BeginSecondFactor` /
+  `controllers/webauthn_controller.go::FinishSecondFactor` (second-factor
+  begin/finish); login gating `controllers/oauth2_controller.go::LoginTicket`
+  (factor detection block).
+- Email 2FA: `controllers/email_2fa_controller.go::SendCode`,
+  `controllers/email_2fa_controller.go::VerifyCode`,
+  `controllers/email_2fa_controller.go::Toggle` (requires verified email).
+- Recovery key: `controllers/user_security_controller.go::CreateRecoveryKey`
+  (create, plaintext returned once),
+  `controllers/user_security_controller.go::RegenerateRecoveryKey` (regenerate),
+  `controllers/user_security_controller.go::RevokeRecoveryKey` (revoke),
+  `controllers/user_security_controller.go::VerifyRecoveryKey` (verify via
+  login ticket),
+  `controllers/user_security_controller.go::generateRecoveryKey`.
+- Combined status endpoint:
+  `controllers/user_security_controller.go::GetTwoFactorStatus` (response
+  fields), route `main.go::GetTwoFactorStatus`; commit `e846507` removed the
+  three separate status endpoints.
 - Recovery key excluded from direct-issuance gating:
-  `controllers/oauth2_controller.go:129`; commit `977bd12` ("recovery key is a
-  backup recovery method rather than an active login MFA factor"). Recovery key
-  still listed for hook policy via `availableSecondFactors`
-  (`controllers/oauth2_controller.go:357-372`).
-- Factor dispatch: `controllers/user_security_controller.go:369-438`
-  (`verifyAnyFactor` branches: TOTP / email / WebAuthn / recovery key); email
-  branch enablement gate at `:389-406` (since commit `f12e42a`).
+  `controllers/oauth2_controller.go::LoginTicket` (factor gate); commit
+  `977bd12` ("recovery key is a backup recovery method rather than an active
+  login MFA factor"). Recovery key still listed for hook policy via
+  `availableSecondFactors`
+  (`controllers/oauth2_controller.go::availableSecondFactors`).
+- Factor dispatch: `controllers/user_security_controller.go::verifyAnyFactor`
+  (branches: TOTP / email / WebAuthn / recovery key); email branch enablement
+  gate inside it (since commit `f12e42a`).
 - Email-factor gate fix and regression tests: commit `f12e42a`
   (`controllers/user_security_controller_test.go`: disabled flag rejects a
   stored code without consuming it; enabled flag accepts and consumes it;
