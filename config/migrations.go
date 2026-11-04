@@ -32,6 +32,7 @@ type ConfigMigration struct {
 //   - "9":   top-level sdk_packages section introduced (compile-time SDK aggregation)
 //   - "10":  remove static internal_key from core_api and yggdrasil_api
 //   - "11":  add database connection retry settings
+//   - "12":  add optional database.port (0 = keep legacy inline host port)
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
@@ -44,6 +45,7 @@ func configMigrations() []ConfigMigration {
 		{FromVersion: "8", ToVersion: "9", Migrate: migrateV8ToV9},
 		{FromVersion: "9", ToVersion: "10", Migrate: migrateV9ToV10},
 		{FromVersion: "10", ToVersion: "11", Migrate: migrateV10ToV11},
+		{FromVersion: "11", ToVersion: "12", Migrate: migrateV11ToV12},
 	}
 }
 
@@ -187,6 +189,22 @@ func migrateV10ToV11(cfg map[string]interface{}, tokenGen func() string) error {
 
 	cfg["database"] = db
 	cfg["version"] = "11"
+	return nil
+}
+
+// migrateV11ToV12 adds the optional database port field. The default 0 keeps
+// the legacy behavior where any port is inlined into the host value
+// ("ip:port"); DatabaseConfig.Addr prefers the standalone field when set.
+func migrateV11ToV12(cfg map[string]interface{}, tokenGen func() string) error {
+	db, _ := cfg["database"].(map[string]interface{})
+	if db == nil {
+		db = map[string]interface{}{}
+	}
+	if _, exists := db["port"]; !exists {
+		db["port"] = 0
+	}
+	cfg["database"] = db
+	cfg["version"] = "12"
 	return nil
 }
 

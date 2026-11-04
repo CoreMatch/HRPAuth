@@ -2,9 +2,11 @@ package config
 
 import (
 	"log"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/goccy/go-yaml"
@@ -76,9 +78,24 @@ type DatabaseConfig struct {
 	User              string
 	Password          string
 	Charset           string
+	Port              int
 	RetryIntervalSec  int
 	MaxRetries        int
 	NextRoundDelayMin int
+}
+
+// Addr 返回 MySQL DSN 的拨号地址。设置了 Port 时优先使用独立端口字段
+// （并剥掉 Host 中可能内联的旧端口）；Port 为 0 时原样返回 Host，
+// 兼容既有 "ip:port" 内联写法。
+func (c DatabaseConfig) Addr() string {
+	if c.Port <= 0 {
+		return c.Host
+	}
+	host := c.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	return net.JoinHostPort(host, strconv.Itoa(c.Port))
 }
 
 type VerificationCodeConfig struct {
@@ -141,7 +158,7 @@ type OAuth2Config struct {
 
 const ConfigFileName = "config.yaml"
 const ConfigFileDir = "./"
-const ConfigVersion = "11"
+const ConfigVersion = "12"
 
 var AppConfig *Config
 
@@ -263,6 +280,7 @@ func parseDatabaseConfig(config map[string]interface{}) DatabaseConfig {
 		User:              getString(db, "user"),
 		Password:          getString(db, "password"),
 		Charset:           getString(db, "charset"),
+		Port:              getInt(db, "port"),
 		RetryIntervalSec:  retryInterval,
 		MaxRetries:        maxRetries,
 		NextRoundDelayMin: nextRoundDelay,

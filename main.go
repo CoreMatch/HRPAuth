@@ -171,6 +171,17 @@ func main() {
 		c.Redirect(http.StatusTemporaryRedirect, "/")
 	})
 
+	// 专用存活探针：不查数据库、不做重活，供容器 healthcheck / 负载均衡使用。
+	// 契约：HA-Contract docs/api/openapi/hrpauth-business.yaml `/health`。
+	r.GET("/health", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"success": true,
+			"message": "ok",
+			"data":    gin.H{"status": "ok"},
+			"meta":    gin.H{"request_id": c.GetString("request_id")},
+		})
+	})
+
 	api := r.Group("")
 	api.Use(DatabaseMiddleware())
 	{

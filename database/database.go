@@ -20,7 +20,7 @@ func Init() {
 func connect() {
 	cfg := config.AppConfig.Database
 	dsn := fmt.Sprintf("%s:%s@tcp(%s)/%s?charset=%s&parseTime=True&loc=Local",
-		cfg.User, cfg.Password, cfg.Host, cfg.DBName, cfg.Charset)
+		cfg.User, cfg.Password, cfg.Addr(), cfg.DBName, cfg.Charset)
 
 	for {
 		retryCount := 0
