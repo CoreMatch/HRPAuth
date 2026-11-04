@@ -166,7 +166,7 @@ func TestMigrateConfigV1Chain(t *testing.T) {
 	if !ok {
 		t.Fatal("yggdrasil_api section missing after migration")
 	}
-	if yggAPI["base_url"] != "http://localhost:2779" {
+	if yggAPI["base_url"] != "http://localhost:2770" {
 		t.Errorf("expected default yggdrasil_api base_url, got %v", yggAPI["base_url"])
 	}
 	if yggAPI["internal_key"] != nil {
@@ -503,7 +503,7 @@ func TestMigrateV7ToV8DecouplesYggdrasilConfig(t *testing.T) {
 	if !ok {
 		t.Fatal("yggdrasil_api section missing after migration")
 	}
-	if yggAPI["base_url"] != "http://localhost:2779" {
+	if yggAPI["base_url"] != "http://localhost:2770" {
 		t.Errorf("expected default yggdrasil_api base_url, got %v", yggAPI["base_url"])
 	}
 	if yggAPI["internal_key"] != "test-manage-token" {
