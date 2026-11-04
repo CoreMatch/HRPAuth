@@ -527,6 +527,7 @@ func serviceSiteScopes() []string {
 	return append([]string{
 		"register.manage",
 		"user.claim.as-service",
+		"user.force-bind.as-service",
 	}, targetedServiceScopes()...)
 }
 
