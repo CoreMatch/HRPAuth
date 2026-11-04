@@ -24,9 +24,13 @@ Each entry is one page in ADR style:
 - **Context** — the problem and constraints
 - **Decision** — what was chosen
 - **Consequences** — including costs and limitations
-- **Evidence** — `file:line`, protocol entries, commit hashes. Every piece of
-  evidence must have been actually checked; anything that could not be verified
-  is marked "not verified". Do not fabricate.
+- **Evidence** — stable anchors, resolved from the repo root: symbol anchors
+  `file.ext::Symbol`, field anchors `file.ext (field: key)`, time-point
+  anchors `file.ext:Lx-Ly @ <commit>` for historical snapshots, or bare line
+  anchors `file.ext:Lx-Ly` only as a last resort; plus protocol entries and
+  commit hashes. Every piece of evidence must have been actually checked;
+  anything that could not be verified is marked "not verified". Do not
+  fabricate.
 
 ## Entries
 
