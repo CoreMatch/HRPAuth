@@ -49,7 +49,7 @@ go build -o HRPAuth
 
 其余字段均有可用默认值，配置结构在启动时自动迁移（当前版本：**11**）。
 
-完整字段参考见 HA-Contract 的[配置文档](https://github.com/CoreMatch/HA-Contract/blob/main/docs/dev/HRPAuth/configuration.md)。
+完整字段参考见本仓库英文 [README 的 Configuration 一节](README.md#configuration)（含配置 schema 版本表与数据库迁移说明）。
 
 ## 部署
 
