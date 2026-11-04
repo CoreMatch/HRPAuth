@@ -526,7 +526,6 @@ func publicSiteScopes() []string {
 func serviceSiteScopes() []string {
 	return append([]string{
 		"register.manage",
-		"user.declare-email",
 		"user.claim.as-service",
 	}, targetedServiceScopes()...)
 }
