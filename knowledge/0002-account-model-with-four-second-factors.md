@@ -39,8 +39,15 @@ and no factor was selected; merely having a recovery key no longer forces the
   remains available as an optional factor that hook policies may still require.
 - The recovery key plaintext is returned once and stored only as a bcrypt hash;
   losing it requires regeneration.
-- Cost/limitation: `verifyAnyFactor`'s email-code branch does not re-check
-  `Email2FAEnabled` (design intent not verified).
+- **Fixed (commit `f12e42a`)**: `verifyAnyFactor`'s email-code branch used to
+  accept any valid code from the shared file-based code store without
+  re-checking `Email2FAEnabled`. Impact before the fix: with Email 2FA turned
+  off, a valid code — which `SendChangeEmailCode` issues unconditionally and
+  which is shared across email flows — still passed the second-factor gate on
+  `ChangeEmail`, `RegenerateRecoveryKey`, and `RevokeRecoveryKey`. The branch
+  now requires `Email2FAEnabled` and a non-empty email, and returns
+  `400 email_2fa_not_configured` otherwise, matching the enablement checks of
+  the TOTP and recovery key branches.
 - Combining factors is additive state on one row; there is no per-factor
   enrollment table except WebAuthn credentials.
 
@@ -68,7 +75,12 @@ and no factor was selected; merely having a recovery key no longer forces the
   backup recovery method rather than an active login MFA factor"). Recovery key
   still listed for hook policy via `availableSecondFactors`
   (`controllers/oauth2_controller.go:357-372`).
-- Factor dispatch: `controllers/user_security_controller.go:373-428`
-  (`verifyAnyFactor` branches: TOTP / email / WebAuthn / recovery key).
+- Factor dispatch: `controllers/user_security_controller.go:369-438`
+  (`verifyAnyFactor` branches: TOTP / email / WebAuthn / recovery key); email
+  branch enablement gate at `:389-406` (since commit `f12e42a`).
+- Email-factor gate fix and regression tests: commit `f12e42a`
+  (`controllers/user_security_controller_test.go`: disabled flag rejects a
+  stored code without consuming it; enabled flag accepts and consumes it;
+  wrong code rejected; recovery key branch unaffected).
 - Commits: `9777cf6` (webauthn 2fa field), `d08f523` (recovery key status),
-  `e846507`, `977bd12`.
+  `e846507`, `977bd12`, `f12e42a` (email factor gate fix).
