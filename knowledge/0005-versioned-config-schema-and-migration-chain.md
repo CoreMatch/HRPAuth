@@ -15,8 +15,8 @@ manual editing, while database schema changes need their own mechanism.
 Two separate versioning mechanisms exist:
 
 1. **Config file schema** — carries a `version` field (current constant
-   `ConfigVersion = "11"`). On startup the core loads the config, checks the
-   version, and runs a **stepwise migration chain** (v1→2→…→11) that rewrites
+   `ConfigVersion = "12"`). On startup the core loads the config, checks the
+   version, and runs a **stepwise migration chain** (v1→2→…→12) that rewrites
    the file in place after making a backup and writing atomically
    (tmp + rename). A version mismatch warns but does not block startup.
 2. **Database schema** — uses golang-migrate with SQL embedded via `embed.FS`,
@@ -40,22 +40,35 @@ Two separate versioning mechanisms exist:
 
 ## Evidence
 
-- Version constant and load: `config/config.go:144` (`ConfigVersion = "11"`),
-  `:148` (`Load()`), `:163-170` (version check warns, does not block),
-  `:13-30` (`Config` struct with `Version`).
-- Startup migration entry: `main.go:65-68` → `controllers/startup_controller.go:31`
-  (`InitializeConfig`) → `:167` (`checkAndMigrateConfig`); backup
-  `config/migrations.go:195` (`BackupConfigFile`); atomic write
-  `controllers/startup_controller.go:214-220`.
-- Migration engine: `config/migrations.go:59` (`MigrateConfig`), refuses
-  rewrite when file version is newer `:73-77`; chain registration
-  `config/migrations.go:35-48`; individual steps `:215` (v1→2), `:251` (v2→3),
-  `:316` (v3→4), `:362` (v4→5), `:381` (v5→6), `:397` (v6→7), `:412` (v7→8),
-  `:137` (v8→9 sdk_packages), `:157` (v9→10 drop internal_key), `:172`
-  (v10→11 DB retry params).
-- DB migration mechanism: `database/migrations/migrations.go:5-6` (embedded FS);
-  `controllers/startup_controller.go:236-287` (`EnsureMigrations`), `:289-346`
-  (`schema_migrations` handling); trigger on connect `main.go:73-77`.
+- Version constant and load: `config/config.go::ConfigVersion`
+  (`ConfigVersion = "12"`), `config/config.go::Load` (`Load()`; version check
+  warns, does not block), `config/config.go::Config` (`Config` struct with
+  `Version`).
+- Startup migration entry: `main.go::InitializeConfig` →
+  `controllers/startup_controller.go::InitializeConfig` →
+  `controllers/startup_controller.go::checkAndMigrateConfig`; backup
+  `config/migrations.go::BackupConfigFile`; atomic write (tmp + rename) inside
+  `controllers/startup_controller.go::checkAndMigrateConfig`.
+- Migration engine: `config/migrations.go::MigrateConfig` (refuses rewrite
+  when file version is newer); chain registration
+  `config/migrations.go::configMigrations`; individual steps
+  `config/migrations.go::migrateV1ToV2` (v1→2),
+  `config/migrations.go::migrateV2ToV3` (v2→3),
+  `config/migrations.go::migrateV3ToV4` (v3→4),
+  `config/migrations.go::migrateV4ToV5` (v4→5),
+  `config/migrations.go::migrateV5ToV6` (v5→6),
+  `config/migrations.go::migrateV6ToV7` (v6→7),
+  `config/migrations.go::migrateV7ToV8` (v7→8),
+  `config/migrations.go::migrateV8ToV9` (v8→9 sdk_packages),
+  `config/migrations.go::migrateV9ToV10` (v9→10 drop internal_key),
+  `config/migrations.go::migrateV10ToV11` (v10→11 DB retry params),
+  `config/migrations.go::migrateV11ToV12` (v11→12 optional database.port).
+- DB migration mechanism: `database/migrations/migrations.go::FS` (embedded
+  FS); `controllers/startup_controller.go::EnsureMigrations`,
+  `controllers/startup_controller.go::ensureSchemaMigrationTable` /
+  `controllers/startup_controller.go::normalizeSchemaMigrationsTable`
+  (`schema_migrations` handling); trigger on connect
+  `main.go::RegisterOnConnect`.
 - Baseline squash: commit `b8a745c` ("Collapse the migration chain into a
   single baseline…"); single baseline file
   `database/migrations/000001_baseline.up.sql` (7 tables: users,
