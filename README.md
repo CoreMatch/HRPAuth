@@ -41,9 +41,9 @@ least `database`, `redis`, `smtp`, `server.port`, `callback.url` and
 `frontend.url` before production use, then restart.
 
 - Complete configuration reference (schema versions, all fields, defaults):
-  [SamuelWiki — HRPAuth Configuration & API](https://github.com/SamuelCheston/SamuelWiki/blob/main/docs/projects/hrpauth/configuration.md)
+  [SamuelWiki — HRPAuth Configuration & API](https://wiki.mcnb.dev/projects/hrpauth/configuration)
 - Database migrations (commands, baseline layout, rules):
-  [SamuelWiki — HRPAuth Database Migrations](https://github.com/SamuelCheston/SamuelWiki/blob/main/docs/projects/hrpauth/database-migrations.md)
+  [SamuelWiki — HRPAuth Database Migrations](https://wiki.mcnb.dev/projects/hrpauth/database-migrations)
 
 ## Deployment
 
@@ -137,7 +137,7 @@ The business API contract (OpenAPI definition and error codes) is maintained in 
 
 **Documentation & portal**
 
-- [HRPAuth-Wiki](https://github.com/CoreMatch/HRPAuth-Wiki): Developer wiki.
+- [HRPAuth-Wiki](https://wiki.mcnb.dev/): Developer wiki.
 - [MatchCore-Portal](https://github.com/CoreMatch/MatchCore-Portal): Bilingual portal site of the wider ecosystem.
 
 **Client**
