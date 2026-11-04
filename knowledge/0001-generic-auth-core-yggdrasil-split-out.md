@@ -26,7 +26,8 @@ They are not part of this repository.
   features**: a config pointer to the external Yggdrasil-API service, a
   heartbeat call, and an anonymous-relay prefix for `/yggdrasil-api`.
 - Some identifiers are protocol residue kept for compatibility (see ADR-0003
-  for the `user.mojang-bind-*` scopes).
+  for the dead Mojang error codes; the `user.mojang-bind-*` scopes were
+  removed from the registry in commit `266c65c`).
 - Cost: behavior that used to live here (profile/texture serving, session
   join/hasJoined) must now be understood across repository boundaries; the
   split rationale itself is recorded in HA-Contract/Wiki, not here.

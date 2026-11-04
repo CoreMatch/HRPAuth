@@ -27,14 +27,16 @@ Two separate versioning mechanisms exist:
 
 ## Consequences
 
-- The config migration chain is retained in code as history (v1→v11), so older
+- The config migration chain is retained in code as history (v1→v12), so older
   deployments upgrade automatically; each step records what it added or removed.
 - The v7→8 step is where Minecraft/Yggdrasil config keys were dropped, matching
   the split in ADR-0001.
-- Cost/limitation: a minor inconsistency remains — the freshly built default
-  config still writes `internal_key`, while the v9→10 migration removes that
-  key. Full config reference and DB migration rules are documented externally
-  (SamuelWiki), not in this repo.
+- Cost/limitation: full config reference and DB migration rules are documented
+  externally (SamuelWiki), not in this repo. The former inconsistency — the
+  freshly built default config writing `internal_key` while the v9→10 migration
+  removes that key — no longer exists: commit `7fd591d` rewrote the default
+  generator (`controllers/startup_controller.go::buildDefaultConfig`) to emit
+  the current schema directly.
 - New databases get all tables in one baseline apply; existing databases rely
   on the `schema_migrations` version to avoid re-running.
 
@@ -74,8 +76,10 @@ Two separate versioning mechanisms exist:
   `database/migrations/000001_baseline.up.sql` (7 tables: users,
   oauth2_clients, oauth2_authorization_codes, oauth2_access_tokens,
   oauth2_refresh_tokens, deleted_accounts, webauthn_credentials).
-- Commits: `8295bb4` (v11 + DB retries), `087030f` (v7→8), `7c11dd2` (v9),
-  `1545da2` (v10), `b8a745c` (baseline squash).
+- Commits: `8295bb4` (v11 + DB retries), `8c96c60` (v12 optional
+  `database.port`), `087030f` (v7→8), `7c11dd2` (v9),
+  `1545da2` (v10), `b8a745c` (baseline squash), `7fd591d` (default generator
+  emits the current schema).
 - Not verified: the exact introducing commit for each of the v2→v7 steps (the
   migration framework itself is attributed to `c0f8cc5`); whether the baseline
   fully absorbed the removed `000012_remove_minecraft_logic` columns.
