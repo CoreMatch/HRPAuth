@@ -41,8 +41,12 @@ pulling side (SDKHandler), not here.
 ## Consequences
 
 - Anonymous relay is no longer a special case: the legacy
-  `relayAllowsAnonymous` helper is dead code; anonymity now comes from a service
-  declaring `security_level=0`, which `RequireAuthLevel` passes through.
+  `relayAllowsAnonymous` helper is dead code with no production caller (it is
+  referenced only by its own unit test); anonymity now comes from a service
+  declaring `security_level=0`, which `RequireAuthLevel` passes through. The
+  helper's historical provenance is unrecoverable — the author has no memory of
+  introducing or re-introducing it (confirmed 2026-11-04) — so no design intent
+  is inferred from it here. The code is deliberately kept, not deleted.
 - Cost: registries are Redis-backed in-process maps — they are restored from
   Redis at boot and lost if Redis is lost; they are not queryable via SQL.
 - The SDK endpoint does not serve individual files from an archive; any
@@ -72,7 +76,8 @@ pulling side (SDKHandler), not here.
   `controllers/orchestration_middleware.go:48-98` (fail-open `:59-73`, async
   post on 2xx `:82-96`), header forwarding `:134-139`.
 - Anonymous relay: `controllers/relay_controller.go:272-277`
-  (`relayAllowsAnonymous`, now unreferenced by the middleware); security-level
+  (`relayAllowsAnonymous`; no production caller — the only reference is the
+  unit test `controllers/relay_controller_test.go:5-40`); security-level
   passthrough `controllers/auth_level.go:13,52-55`.
 - SDK package store: `main.go:238-243` (routes; comment "satellite 上传，
   SDKHandler 拉取"); archive extraction `controllers/sdk_package_controller.go:255-265,289-339,342-377`;
@@ -82,6 +87,9 @@ pulling side (SDKHandler), not here.
   (anonymous relay + root endpoint), `1a3103a` (relay/forward logging),
   `7c11dd2` (sdk packages), `6d9324a` (directory entries in archives),
   `cb2ca9e` (multiple menu/dashboard entries), `353f084` (webhook hook system).
-- Not verified: the re-introduction intent of `relayAllowsAnonymous` dead code;
-  current SDK addressing after `sdk_url` was removed (see `ca02ad8` then
-  `cb2ca9e`).
+- Provenance of `relayAllowsAnonymous`: unrecoverable. The author confirmed on
+  2026-11-04 having no memory of introducing or re-introducing it, so no design
+  intent is inferred from it here; it is recorded only as dead code with no
+  production caller, and it is deliberately kept (not deleted).
+- Not verified: current SDK addressing after `sdk_url` was removed (see
+  `ca02ad8` then `cb2ca9e`).
