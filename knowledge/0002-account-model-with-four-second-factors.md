@@ -58,7 +58,7 @@ and no factor was selected; merely having a recovery key no longer forces the
   `RecoveryKeyEnabled`); WebAuthn credential table `models/models.go:105-119`;
   DDL `database/migrations/000001_baseline.up.sql:14-19`.
 - TOTP: `controllers/totp_controller.go:45` (`SetupTOTP`), `:141` (`Toggle2FA`),
-  `:159` (`Update("2FA", ...)`); verify `controllers/user_security_controller.go:434-438`.
+  `:159` (`Update("2FA", ...)`); verify `controllers/user_security_controller.go:440-452`.
 - WebAuthn: `controllers/webauthn_controller.go:81,146` (register begin/finish),
   `:245` (`Toggle2FA`), `:322,361` (second-factor begin/finish); login gating
   `controllers/oauth2_controller.go:102-107`.
@@ -68,7 +68,7 @@ and no factor was selected; merely having a recovery key no longer forces the
   returned once `:196-201`), `:212` (regenerate), `:248` (revoke), `:279`
   (verify via login ticket), `:360-367` (`generateRecoveryKey`).
 - Combined status endpoint: `controllers/user_security_controller.go:328`
-  (`GetTwoFactorStatus`, fields `:351-357`), route `main.go:211`; commit
+  (`GetTwoFactorStatus`, fields `:351-357`), route `main.go:212`; commit
   `e846507` removed the three separate status endpoints.
 - Recovery key excluded from direct-issuance gating:
   `controllers/oauth2_controller.go:129`; commit `977bd12` ("recovery key is a
