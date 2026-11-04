@@ -71,6 +71,35 @@ docker build -t hrpauth .
 
 镜像以非 root 用户运行同一二进制，暴露端口 `2778`。[入口脚本](docker-entrypoint.sh)可在启动前用环境变量渲染配置模板（`CONFIG_TEMPLATE` / `RENDERED_CONFIG`）。
 
+### 平台编排（Compose）
+
+HRPAuth 是 HA 平台的核心，但在实际部署中它只是其中一个服务。整个平台由 [HA-Services-Deployer/deploy/docker-compose.yml](https://github.com/CoreMatch/HA-Services-Deployer/blob/main/deploy/docker-compose.yml) 里的 Compose 模板统一编排，它会构建全部服务镜像并把它们组装起来：
+
+```bash
+git clone https://github.com/CoreMatch/HA-Services-Deployer.git
+cd HA-Services-Deployer/deploy
+cp .env.example .env   # 数据库 / Redis 地址、OAuth 客户端、密钥、上游 URL
+docker compose up -d --build
+```
+
+| 服务 | 镜像 | 端口 | 职责 |
+|---|---|---|---|
+| **HRPAuth** | `ha/hrpauth` | 2778 | 账号与 OAuth2 授权核心 |
+| HRPAuth-Yggdrasil-API | `ha/hrpauth-yggdrasil-api` | 2770 | Yggdrasil 协议提供方 |
+| HASkinLib | `ha/haskinlib` | 2701 | 材质上传、存储与预览 |
+| HASkinProxy | `ha/haskinproxy` | 2702 | 面向 CustomSkinLoader 客户端的皮肤服务代理 |
+| WinnerProxy | `ha/winnerproxy` | 2777 | Yggdrasil 请求路由代理 |
+| HA-WebUI-SDKHandler | `ha/ha-webui-sdkhandler` | 2704 / 2705 | WebUI SDK 聚合与编译 |
+| MatchCoreArena-Server | `ha/mca-server` | 9178 | 对局核心服务 |
+| HA-Services-Deployer | `ha/ha-services-deployer` | 18080 | 基于清单的部署后端 |
+| HA-Services-MaintenanceView | `ha/ha-services-maintenance-view` | 18081 | 运维操作界面 |
+
+编排的接线方式：
+
+- MySQL 与 Redis **不在**编排内启动，各服务通过 `.env` 中的 `DB_*` / `REDIS_*` 变量连接外部实例。
+- 每个服务的 `config.yaml` 在容器启动时由 `deploy/config/` 下的模板渲染而成，数据库地址、上游 URL 与密钥全部由 `.env` 决定。
+- 服务间调用使用容器名（例如 `http://hrpauth:2778`），镜像内不写死宿主机地址。
+
 ## 功能
 
 - 注册、登录、登出，含邮箱验证

@@ -71,6 +71,35 @@ docker build -t hrpauth .
 
 The image runs the same binary as a non-root user and exposes port `2778`. The [entrypoint](docker-entrypoint.sh) can render a configuration template from environment variables before startup (`CONFIG_TEMPLATE` / `RENDERED_CONFIG`).
 
+### Platform orchestration (Compose)
+
+HRPAuth is the core of the HA platform, but in production it runs as one service among many. The whole stack is orchestrated by a Compose template kept in [HA-Services-Deployer/deploy/docker-compose.yml](https://github.com/CoreMatch/HA-Services-Deployer/blob/main/deploy/docker-compose.yml), which builds every service image and wires them together:
+
+```bash
+git clone https://github.com/CoreMatch/HA-Services-Deployer.git
+cd HA-Services-Deployer/deploy
+cp .env.example .env   # database / Redis addresses, OAuth clients, keys, upstream URLs
+docker compose up -d --build
+```
+
+| Service | Image | Port | Role |
+|---|---|---|---|
+| **HRPAuth** | `ha/hrpauth` | 2778 | Account and OAuth2 authorization core |
+| HRPAuth-Yggdrasil-API | `ha/hrpauth-yggdrasil-api` | 2770 | Yggdrasil protocol provider |
+| HASkinLib | `ha/haskinlib` | 2701 | Texture upload, storage and preview |
+| HASkinProxy | `ha/haskinproxy` | 2702 | Skin service proxy for CustomSkinLoader clients |
+| WinnerProxy | `ha/winnerproxy` | 2777 | Yggdrasil request routing proxy |
+| HA-WebUI-SDKHandler | `ha/ha-webui-sdkhandler` | 2704 / 2705 | WebUI SDK aggregation and compilation |
+| MatchCoreArena-Server | `ha/mca-server` | 9178 | Match core service |
+| HA-Services-Deployer | `ha/ha-services-deployer` | 18080 | Manifest-driven deployment backend |
+| HA-Services-MaintenanceView | `ha/ha-services-maintenance-view` | 18081 | Operations interface |
+
+How the orchestration is wired:
+
+- MySQL and Redis are **not** started by the stack; the services reach external instances through the `DB_*` / `REDIS_*` variables in `.env`.
+- Each service's `config.yaml` is rendered from a template in `deploy/config/` at container startup, so database addresses, upstream URLs and secrets are all driven by `.env`.
+- Inter-service calls use container names (for example `http://hrpauth:2778`), so no fixed host addresses are baked into the images.
+
 ## Features
 
 - Registration, login and logout with email verification
