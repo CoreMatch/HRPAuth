@@ -66,11 +66,9 @@ func (sc *StartupController) buildDefaultConfig() map[string]interface{} {
 		"frontend": map[string]interface{}{
 			"url": frontendURL,
 		},
-		"keygen": map[string]interface{}{
-			"enable": 0,
-		},
 		"database": map[string]interface{}{
 			"host":                 "127.0.0.1",
+			"port":                 0,
 			"db_name":              "hrpa",
 			"user":                 "hrpa",
 			"password":             "hrpa",
@@ -131,15 +129,13 @@ func (sc *StartupController) buildDefaultConfig() map[string]interface{} {
 				frontendURL + "oauth/callback",
 			},
 		},
-		"core_api": map[string]interface{}{
-			"internal_key": utils.GenerateRandomToken(32),
-		},
 		"yggdrasil_api": map[string]interface{}{
-			"base_url":     "http://localhost:2770",
-			"internal_key": utils.GenerateRandomToken(32),
+			"base_url": "http://localhost:2770",
 		},
-		"storage": map[string]interface{}{
-			"orphan_file_expiry_days": 7,
+		"sdk_packages": map[string]interface{}{
+			"storage_dir":      "./data/sdk_packages",
+			"max_package_size": 20971520,
+			"max_packages":     128,
 		},
 	}
 }

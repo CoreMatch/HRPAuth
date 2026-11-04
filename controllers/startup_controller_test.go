@@ -101,3 +101,46 @@ yggdrasil:
 		t.Errorf("expected backup config.yaml.bak.2: %v", err)
 	}
 }
+
+func TestBuildDefaultConfigMatchesCurrentSchema(t *testing.T) {
+	sc := NewStartupController()
+	cfg := sc.buildDefaultConfig()
+
+	if cfg["version"] != config.ConfigVersion {
+		t.Fatalf("generated config version = %v, want %v", cfg["version"], config.ConfigVersion)
+	}
+	// Sections removed by migrations v8/v10/v11 must not be generated anymore.
+	for _, removed := range []string{"keygen", "storage", "core_api"} {
+		if _, ok := cfg[removed]; ok {
+			t.Errorf("generated config still contains removed section %q", removed)
+		}
+	}
+	// Sections introduced up to the current version must be present.
+	for _, required := range []string{"sdk_packages", "yggdrasil_api", "database"} {
+		if _, ok := cfg[required]; !ok {
+			t.Errorf("generated config misses section %q", required)
+		}
+	}
+	if ygg, ok := cfg["yggdrasil_api"].(map[string]interface{}); !ok || ygg["base_url"] == "" {
+		t.Errorf("yggdrasil_api.base_url must be generated")
+	} else if _, hasKey := ygg["internal_key"]; hasKey {
+		t.Errorf("yggdrasil_api.internal_key was removed in v10 and must not be generated")
+	}
+	if db, ok := cfg["database"].(map[string]interface{}); !ok || db["port"] == nil {
+		t.Errorf("database.port must be generated")
+	}
+
+	// Idempotence: an up-to-date generated config must not trigger migrations.
+	_, changed, err := config.MigrateConfig(cfg, sc.generateManageToken)
+	if err != nil {
+		t.Fatalf("MigrateConfig on generated config: %v", err)
+	}
+	if changed {
+		t.Fatal("generated config is already current; migration must be a no-op")
+	}
+
+	// The generated map must marshal to valid YAML (round-trip sanity).
+	if _, err := yaml.Marshal(cfg); err != nil {
+		t.Fatalf("generated config does not marshal: %v", err)
+	}
+}
