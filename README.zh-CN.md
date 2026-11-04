@@ -41,9 +41,9 @@ go build -o HRPAuth
 然后重启。
 
 - 完整配置参考（schema 版本、全部字段、默认值）：
-  [SamuelWiki — HRPAuth 配置与接口](https://github.com/SamuelCheston/SamuelWiki/blob/main/docs/zh/projects/hrpauth/configuration.md)
+  [SamuelWiki — HRPAuth 配置与接口](https://wiki.mcnb.dev/zh/projects/hrpauth/configuration)
 - 数据库迁移（命令、baseline 布局、规则）：
-  [SamuelWiki — HRPAuth 数据库迁移](https://github.com/SamuelCheston/SamuelWiki/blob/main/docs/zh/projects/hrpauth/database-migrations.md)
+  [SamuelWiki — HRPAuth 数据库迁移](https://wiki.mcnb.dev/zh/projects/hrpauth/database-migrations)
 
 ## 部署
 
@@ -137,7 +137,7 @@ HA 生态内的其他服务可以登记到本服务并经由其接入；机制�
 
 **文档与门户**
 
-- [HRPAuth-Wiki](https://github.com/CoreMatch/HRPAuth-Wiki)：开发者 wiki。
+- [HRPAuth-Wiki](https://wiki.mcnb.dev/zh/)：开发者 wiki。
 - [MatchCore-Portal](https://github.com/CoreMatch/MatchCore-Portal)：更大生态的双语门户站点。
 
 **客户端**
