@@ -60,16 +60,16 @@ pulling side (SDKHandler), not here.
   `:83-98` (RegisterAuthKey), `:125-150` (persist to Redis), `:189-203` (Get
   with lazy expiry); heartbeat `registry/heartbeat.go:35-77`; entrypoints
   `controllers/presence_controller.go:34` (Bonjour), `:57-80` (AuthKey); routes
-  `main.go:230-231`.
+  `main.go:231-232`.
 - RouteRegistry: `controllers/route_controller.go:38-45` (struct), `:49-55`
   (Upsert), `:106-113` (MatchPre/Post), `:138-154` (MatchPath wildcard),
   `:172-194` (Register requires presence `:180-183`).
 - RelayRegistry: `controllers/relay_controller.go:37-44` (struct), `:48-67`
   (Upsert), `:172-199` (longest-prefix Match), `:20` (30-day TTL), routes
-  `main.go:234-236`.
+  `main.go:235-237`.
 - HookRegistry: `controllers/hook_controller.go:69-76` (struct), `:21-23`
   (phases), `:25-27` (capabilities), `:134-155` (priority Match), route
-  `main.go:233`.
+  `main.go:234`.
 - Middleware mounting: `main.go:128-129`. RelayMiddleware
   `controllers/relay_controller.go:283-316` (skip `/services/*` `:286-289`,
   auth by security_level `:297`, 502 no-fallback `:313`). Orchestration
@@ -79,10 +79,11 @@ pulling side (SDKHandler), not here.
   (`relayAllowsAnonymous`; no production caller — the only reference is the
   unit test `controllers/relay_controller_test.go:5-40`); security-level
   passthrough `controllers/auth_level.go:13,52-55`.
-- SDK package store: `main.go:238-243` (routes; comment "satellite 上传，
+- SDK package store: `main.go:239-244` (routes; comment "satellite 上传，
   SDKHandler 拉取"); archive extraction `controllers/sdk_package_controller.go:255-265,289-339,342-377`;
   path safety `:269-286`; whole-archive download only
-  `services/sdk_package_store.go:143-161`, atomic put `:187-241`.
+  `controllers/sdk_package_controller.go:143-161`, atomic put
+  `controllers/sdk_package_store.go:187-241`.
 - Commits: `1545da2` (extract presence registry, auth overhaul), `024bc3a`
   (anonymous relay + root endpoint), `1a3103a` (relay/forward logging),
   `7c11dd2` (sdk packages), `6d9324a` (directory entries in archives),
