@@ -444,7 +444,7 @@ func migrateV7ToV8(cfg map[string]interface{}, tokenGen func() string) error {
 		yggAPI = map[string]interface{}{}
 	}
 	if url, _ := yggAPI["base_url"].(string); url == "" {
-		yggAPI["base_url"] = "http://localhost:2779" // Default for decoupled service
+		yggAPI["base_url"] = "http://localhost:2770" // Default for decoupled service (Yggdrasil-API listens on 2770)
 	}
 	if key, _ := yggAPI["internal_key"].(string); key == "" {
 		yggAPI["internal_key"] = core["internal_key"].(string)

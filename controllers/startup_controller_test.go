@@ -81,7 +81,7 @@ yggdrasil:
 	if !ok {
 		t.Fatal("yggdrasil_api section missing after migration")
 	}
-	if yggAPI["base_url"] != "http://localhost:2779" {
+	if yggAPI["base_url"] != "http://localhost:2770" {
 		t.Errorf("expected default yggdrasil_api base_url, got %v", yggAPI["base_url"])
 	}
 
@@ -123,6 +123,8 @@ func TestBuildDefaultConfigMatchesCurrentSchema(t *testing.T) {
 	}
 	if ygg, ok := cfg["yggdrasil_api"].(map[string]interface{}); !ok || ygg["base_url"] == "" {
 		t.Errorf("yggdrasil_api.base_url must be generated")
+	} else if ygg["base_url"] != "http://localhost:2770" {
+		t.Errorf("yggdrasil_api.base_url = %v, want http://localhost:2770", ygg["base_url"])
 	} else if _, hasKey := ygg["internal_key"]; hasKey {
 		t.Errorf("yggdrasil_api.internal_key was removed in v10 and must not be generated")
 	}
