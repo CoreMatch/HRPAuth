@@ -510,3 +510,42 @@ func TestMigrateV7ToV8DecouplesYggdrasilConfig(t *testing.T) {
 		t.Errorf("expected yggdrasil_api internal_key copied from core_api, got %v", yggAPI["internal_key"])
 	}
 }
+
+func TestMigrateV11ToV12AddsDatabasePort(t *testing.T) {
+	cfg := map[string]interface{}{
+		"version":  "11",
+		"database": map[string]interface{}{"host": "db.example:3307"},
+	}
+	out, changed, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected v11->v12 migration to run")
+	}
+	if out["version"] != "12" {
+		t.Fatalf("expected version 12, got %v", out["version"])
+	}
+	db := out["database"].(map[string]interface{})
+	if db["port"] != 0 {
+		t.Errorf("expected default port 0, got %v", db["port"])
+	}
+	if db["host"] != "db.example:3307" {
+		t.Errorf("legacy inline host must stay untouched, got %v", db["host"])
+	}
+}
+
+func TestMigrateV11ToV12KeepsExistingPort(t *testing.T) {
+	cfg := map[string]interface{}{
+		"version":  "11",
+		"database": map[string]interface{}{"host": "db.example", "port": 3307},
+	}
+	out, _, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	db := out["database"].(map[string]interface{})
+	if db["port"] != 3307 {
+		t.Errorf("existing port must be preserved, got %v", db["port"])
+	}
+}
