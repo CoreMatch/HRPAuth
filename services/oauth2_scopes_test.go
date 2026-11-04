@@ -17,3 +17,17 @@ func TestServiceSiteScopesCarryAdminFlowScopes(t *testing.T) {
 		}
 	}
 }
+
+// TestOrphanScopesStayRemoved guards the 2026-11-05 cleanup: these scopes had
+// no consuming endpoint and were removed from the registry; re-adding them
+// requires a consumer to exist first.
+func TestOrphanScopesStayRemoved(t *testing.T) {
+	all := append([]string{}, publicSiteScopes()...)
+	all = append(all, serviceSiteScopes()...)
+	all = append(all, targetedServiceScopes()...)
+	for _, banned := range []string{"register.manage", "profile.change-name", "profile.change-name.as-service"} {
+		if slices.Contains(all, banned) {
+			t.Errorf("orphan scope %q re-appeared in the registry", banned)
+		}
+	}
+}
