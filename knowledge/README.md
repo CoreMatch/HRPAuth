@@ -42,3 +42,4 @@ Each entry is one page in ADR style:
 | [0004](0004-in-process-registries-and-relay-forwarding.md) | In-Process Registries and Relay/Orchestration Forwarding | accepted | 2026-11-04 |
 | [0005](0005-versioned-config-schema-and-migration-chain.md) | Versioned Config Schema and Migration Chain | accepted | 2026-11-04 |
 | [0006](0006-single-binary-and-container-deployment.md) | Two Deployment Forms: Single Binary and Container Image | accepted | 2026-11-04 |
+| [0007](0007-internal-verify-token-and-claim-user-endpoints.md) | Internal Endpoints for Yggdrasil-API: verify-token and claim-user | accepted | 2026-11-05 |

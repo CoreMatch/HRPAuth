@@ -16,7 +16,9 @@ HRPAuth ships **two deployment forms**:
 
 1. **Single binary** — built via `build.sh` (`go build -o ./build/HRPAuth`);
    prebuilt binaries for six platforms (darwin/linux/windows × amd64/arm64)
-   are kept under `build/`.
+   are kept under `build/` — locally only: `build/*` is gitignored
+   (`.gitignore:L3`), so the binaries are not committed and a fresh clone
+   must build them itself via `build.sh`.
 2. **Container image** — a multi-stage `Dockerfile`: builder stage
    `golang:1.26.4-alpine` producing a static binary, runtime stage `alpine:3.22`
    running as a non-root user (uid 10001), `EXPOSE 2778`, with an entrypoint
@@ -41,7 +43,8 @@ database_not_ready` instead of failing.
 ## Evidence
 
 - Single binary: `README.md:L50-L56` ("Single binary" + `build.sh`); prebuilt
-  binaries present under `build/`; `README.zh-CN.md:L50`.
+  binaries present under `build/` (working tree only — `build/*` ignored per
+  `.gitignore:L3`); `README.zh-CN.md:L50`.
 - Container image: `Dockerfile:L2-L10` (builder `golang:${GO_VERSION}-alpine`,
   static build), `Dockerfile:L12-L14` + `Dockerfile:L22` (runtime
   `alpine:3.22`, non-root uid 10001), `Dockerfile:L21` (`EXPOSE 2778`),
