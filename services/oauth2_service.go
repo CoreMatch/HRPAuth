@@ -506,18 +506,15 @@ func splitScopes(scope string) []string {
 func publicSiteScopes() []string {
 	return []string{
 		"user.read",
-		"user.mojang-bind-enable",
 		"user.delete",
 		"user.delete.list",
 		"profile.change-username",
 		"totp.setup",
-		"totp.status",
 		"totp.toggle",
 		"webauthn.register",
 		"webauthn.credentials",
 		"webauthn.2fa",
 		"email-2fa.toggle",
-		"email-2fa.status",
 		"user.security.manage",
 	}
 }
@@ -532,19 +529,15 @@ func serviceSiteScopes() []string {
 func targetedServiceScopes() []string {
 	return []string{
 		"user.read.as-service",
-		"user.mojang-bind-enable.as-service",
-		"user.mojang-bind-disable.as-service",
 		"user.delete.as-service",
 		"user.delete.list.as-service",
 		"profile.change-username.as-service",
 		"totp.setup.as-service",
-		"totp.status.as-service",
 		"totp.toggle.as-service",
 		"webauthn.register.as-service",
 		"webauthn.credentials.as-service",
 		"webauthn.2fa.as-service",
 		"email-2fa.toggle.as-service",
-		"email-2fa.status.as-service",
 		"user.security.manage.as-service",
 	}
 }

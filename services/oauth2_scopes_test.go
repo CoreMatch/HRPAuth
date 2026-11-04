@@ -18,16 +18,30 @@ func TestServiceSiteScopesCarryAdminFlowScopes(t *testing.T) {
 	}
 }
 
-// TestOrphanScopesStayRemoved guards the 2026-11-05 cleanup: these scopes had
+// TestOrphanScopesStayRemoved guards the 2026-11-05 cleanups: these scopes had
 // no consuming endpoint and were removed from the registry; re-adding them
-// requires a consumer to exist first.
+// requires a consumer to exist first. Batch 2 covers the Mojang bind scopes
+// (the flow moved to the Yggdrasil-API /player endpoints, which do not
+// consume core scopes) plus the never-wired totp/email-2fa status scopes.
 func TestOrphanScopesStayRemoved(t *testing.T) {
 	all := append([]string{}, publicSiteScopes()...)
 	all = append(all, serviceSiteScopes()...)
 	all = append(all, targetedServiceScopes()...)
-	for _, banned := range []string{"register.manage", "profile.change-name", "profile.change-name.as-service"} {
-		if slices.Contains(all, banned) {
-			t.Errorf("orphan scope %q re-appeared in the registry", banned)
+	banned := []string{
+		"register.manage",
+		"profile.change-name",
+		"profile.change-name.as-service",
+		"user.mojang-bind-enable",
+		"user.mojang-bind-enable.as-service",
+		"user.mojang-bind-disable.as-service",
+		"totp.status",
+		"totp.status.as-service",
+		"email-2fa.status",
+		"email-2fa.status.as-service",
+	}
+	for _, scope := range banned {
+		if slices.Contains(all, scope) {
+			t.Errorf("orphan scope %q re-appeared in the registry", scope)
 		}
 	}
 }
