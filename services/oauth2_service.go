@@ -510,7 +510,6 @@ func publicSiteScopes() []string {
 		"user.delete",
 		"user.delete.list",
 		"profile.change-username",
-		"profile.change-name",
 		"totp.setup",
 		"totp.status",
 		"totp.toggle",
@@ -525,7 +524,6 @@ func publicSiteScopes() []string {
 
 func serviceSiteScopes() []string {
 	return append([]string{
-		"register.manage",
 		"user.claim.as-service",
 		"user.force-bind.as-service",
 	}, targetedServiceScopes()...)
@@ -539,7 +537,6 @@ func targetedServiceScopes() []string {
 		"user.delete.as-service",
 		"user.delete.list.as-service",
 		"profile.change-username.as-service",
-		"profile.change-name.as-service",
 		"totp.setup.as-service",
 		"totp.status.as-service",
 		"totp.toggle.as-service",
