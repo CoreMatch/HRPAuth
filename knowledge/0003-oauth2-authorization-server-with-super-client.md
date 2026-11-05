@@ -42,15 +42,12 @@ boot:
 
 ## Consequences
 
-- The `user.mojang-bind-*` scopes were **protocol residue**: they had no
-  handler or enforcement point in this repo (the Mojang-bind/Yggdrasil
-  behavior they relate to was split out, see ADR-0001), and were formerly kept
-  in the scope lists for compatibility rather than active use. Having been
-  confirmed to have no consumer anywhere in the ecosystem, they were removed
-  from the registry in commit `266c65c`; the guard test
-  `services/oauth2_scopes_test.go::TestOrphanScopesStayRemoved` keeps them out
-  unless a consumer appears.
-- Deprecated `keygen` and `texture.*` scopes were removed (`f170607`).
+- The `user.mojang-bind-*` scopes are **protocol residue**: the
+  Mojang-bind/Yggdrasil behavior they relate to lives outside this repo (see
+  ADR-0001), with no consumer anywhere in the ecosystem. The guard test
+  `services/oauth2_scopes_test.go::TestOrphanScopesStayRemoved` keeps them —
+  and the never-wired `totp.status*` / `email-2fa.status*` scopes — out of the
+  registry unless a consumer appears.
 - Cost: super-client secret lives in config, so secret rotation is a config
   change, not a DB update; `db.*` scopes have no in-repo consumer (delegated to
   an external database service — not verified).
@@ -83,16 +80,8 @@ boot:
   `services/oauth2_service.go::serviceSiteScopes` (service),
   `services/oauth2_service.go::targetedServiceScopes` (targeted
   `.as-service`), `services/oauth2_service.go::databaseScopes` (database).
-- `mojang-bind` occurrences: `services/oauth2_service.go:L509-L538 @ 543e8f5`
-  only; no consuming handler found (grep across repo). Related dead error
-  codes: `controllers/api_response.go::CodeInvalidMojangUUID`,
-  `controllers/api_response.go::CodeMojangUUIDRequired`,
-  `controllers/api_response.go::CodeNoMojangUUID`.
-- Commits: `e5f468f` (super client auth + header forwarding), `f170607` (remove
-  deprecated keygen/texture scopes), `266c65c` (drop orphan `user.mojang-bind-*`,
-  `totp.status*`, `email-2fa.status*` scopes).
+- No consuming handler for the `mojang-bind` scopes found (grep across repo).
+- Commits: `e5f468f` (super client auth + header forwarding), `266c65c` (drop
+  orphan `user.mojang-bind-*`, `totp.status*`, `email-2fa.status*` scopes).
 - Not verified: whether `db.*` scopes are consumed by an external database
-  service. (The open question whether `user.mojang-bind-*` was intentionally
-  retained for a future Yggdrasil-API callback is closed: the scopes were
-  removed in commit `266c65c` after confirming no consumer anywhere in the
-  ecosystem.)
+  service.
