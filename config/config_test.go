@@ -135,3 +135,30 @@ func TestParseOAuth2ConfigServiceClients(t *testing.T) {
 		t.Errorf("unexpected second entry: %+v", second)
 	}
 }
+
+func TestParseOAuth2ConfigServiceScopeAllowlist(t *testing.T) {
+	// 缺失 service_scope_allowlist 段 → 空 map（旧配置零行为变化）。
+	missing := parseOAuth2Config(map[string]interface{}{
+		"oauth2": map[string]interface{}{"super_client_id": "s"},
+	})
+	if len(missing.ServiceScopeAllowlist) != 0 {
+		t.Fatalf("expected an empty allowlist when the section is missing, got %v", missing.ServiceScopeAllowlist)
+	}
+
+	// 显式 map 按服务名解析；空白条目被剔除。
+	parsed := parseOAuth2Config(map[string]interface{}{
+		"oauth2": map[string]interface{}{
+			"service_scope_allowlist": map[string]interface{}{
+				"winnerproxy": []interface{}{"user.read.as-service", "  ", "user.delete.as-service"},
+				"  ":          []interface{}{"user.read.as-service"},
+			},
+		},
+	})
+	if len(parsed.ServiceScopeAllowlist) != 1 {
+		t.Fatalf("expected exactly 1 allowlist entry, got %v", parsed.ServiceScopeAllowlist)
+	}
+	got := parsed.ServiceScopeAllowlist["winnerproxy"]
+	if len(got) != 2 || got[0] != "user.read.as-service" || got[1] != "user.delete.as-service" {
+		t.Errorf("unexpected winnerproxy allowlist: %v", got)
+	}
+}

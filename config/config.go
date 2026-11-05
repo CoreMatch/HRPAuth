@@ -158,6 +158,12 @@ type OAuth2Config struct {
 	// ops 级服务身份）。启动时幂等确保对应行存在于 oauth2_clients；
 	// 空列表 = 不种子任何客户端，行为与旧版本完全一致。
 	ServiceClients []ServiceClientConfig
+	// ServiceScopeAllowlist 限定各服务通过自助注册端点
+	// （POST /oauth/register）申请客户端时可获得的 scope 清单：
+	// 服务名 -> 允许的 scope 列表。不在清单内的服务名申请不到任何
+	// scope；清单内不属于已知服务 scope 集的条目一律不生效
+	// （super 与 db.* 类 scope 永远无法经此途径发行）。
+	ServiceScopeAllowlist map[string][]string
 }
 
 // ServiceClientConfig 描述一个配置驱动的 OAuth2 服务客户端种子项。
@@ -169,7 +175,7 @@ type ServiceClientConfig struct {
 
 const ConfigFileName = "config.yaml"
 const ConfigFileDir = "./"
-const ConfigVersion = "13"
+const ConfigVersion = "14"
 
 var AppConfig *Config
 
@@ -410,7 +416,35 @@ func parseOAuth2Config(config map[string]interface{}) OAuth2Config {
 		PublicClientID:         getString(oauth2, "public_client_id"),
 		PublicRedirectURIs:     publicRedirectURIs,
 		ServiceClients:         parseServiceClients(oauth2),
+		ServiceScopeAllowlist:  parseServiceScopeAllowlist(oauth2),
 	}
+}
+
+// parseServiceScopeAllowlist 解析可选的 oauth2.service_scope_allowlist
+// （服务名 -> 允许申请的 scope 列表）。缺失或非法时返回空 map，
+// 即任何服务都不能通过自助注册获得 scope。
+func parseServiceScopeAllowlist(oauth2 map[string]interface{}) map[string][]string {
+	raw, _ := oauth2["service_scope_allowlist"].(map[string]interface{})
+	out := make(map[string][]string, len(raw))
+	for name, value := range raw {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			continue
+		}
+		list, _ := value.([]interface{})
+		scopes := make([]string, 0, len(list))
+		for _, item := range list {
+			scope, ok := item.(string)
+			if !ok {
+				continue
+			}
+			if scope = strings.TrimSpace(scope); scope != "" {
+				scopes = append(scopes, scope)
+			}
+		}
+		out[name] = scopes
+	}
+	return out
 }
 
 // parseServiceClients 解析可选的 oauth2.service_clients 列表。

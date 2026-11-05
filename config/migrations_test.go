@@ -566,8 +566,8 @@ func TestMigrateV12ToV13AddsEmptyServiceClients(t *testing.T) {
 	if !changed {
 		t.Fatal("expected v12->v13 migration to run")
 	}
-	if out["version"] != "13" {
-		t.Fatalf("expected version 13, got %v", out["version"])
+	if out["version"] != ConfigVersion {
+		t.Fatalf("expected final version %q, got %v", ConfigVersion, out["version"])
 	}
 	oauth2 := out["oauth2"].(map[string]interface{})
 	clients, ok := oauth2["service_clients"].([]interface{})
@@ -597,5 +597,59 @@ func TestMigrateV12ToV13KeepsExistingServiceClients(t *testing.T) {
 	clients, ok := oauth2["service_clients"].([]interface{})
 	if !ok || len(clients) != 1 {
 		t.Fatalf("existing service_clients must be preserved, got %v", oauth2["service_clients"])
+	}
+}
+
+func TestMigrateV13ToV14AddsEmptyScopeAllowlist(t *testing.T) {
+	// 旧配置没有 oauth2.service_scope_allowlist 段：迁移只补空 map，不报错。
+	cfg := map[string]interface{}{
+		"version": "13",
+		"oauth2": map[string]interface{}{
+			"super_client_id":     "hrpauth-internal-super",
+			"super_client_secret": "test-secret",
+		},
+	}
+	out, changed, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected v13->v14 migration to run")
+	}
+	if out["version"] != ConfigVersion {
+		t.Fatalf("expected final version %q, got %v", ConfigVersion, out["version"])
+	}
+	oauth2 := out["oauth2"].(map[string]interface{})
+	allowlist, ok := oauth2["service_scope_allowlist"].(map[string]interface{})
+	if !ok {
+		t.Fatal("service_scope_allowlist should be present after v13->v14")
+	}
+	if len(allowlist) != 0 {
+		t.Errorf("service_scope_allowlist must default to empty, got %v", allowlist)
+	}
+}
+
+func TestMigrateV13ToV14KeepsExistingScopeAllowlist(t *testing.T) {
+	existing := map[string]interface{}{
+		"winnerproxy": []interface{}{"user.read.as-service"},
+	}
+	cfg := map[string]interface{}{
+		"version": "13",
+		"oauth2": map[string]interface{}{
+			"service_scope_allowlist": existing,
+		},
+	}
+	out, _, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	oauth2 := out["oauth2"].(map[string]interface{})
+	allowlist, ok := oauth2["service_scope_allowlist"].(map[string]interface{})
+	if !ok {
+		t.Fatal("existing service_scope_allowlist must survive migration")
+	}
+	list, _ := allowlist["winnerproxy"].([]interface{})
+	if len(list) != 1 {
+		t.Fatalf("existing allowlist entries must be preserved, got %v", allowlist)
 	}
 }
