@@ -1,7 +1,10 @@
 package services
 
 import (
+	"bytes"
+	"log"
 	"path/filepath"
+	"strings"
 	"sync"
 	"testing"
 
@@ -261,6 +264,114 @@ func TestEnsureConfiguredServiceClients_ConcurrentNoDuplicates(t *testing.T) {
 	}
 	if n := countClients(t); n != 1 {
 		t.Fatalf("expected exactly 1 client after concurrent seeding, got %d", n)
+	}
+}
+
+// TestEnsureConfiguredServiceClients_SkipsEntryCarryingSuperSecret pins
+// the root-credential guard: an entry whose secret equals the super
+// client secret is skipped entirely (nothing created) with a warning
+// that names the entry but never prints the secret.
+func TestEnsureConfiguredServiceClients_SkipsEntryCarryingSuperSecret(t *testing.T) {
+	setupServiceClientSeedEnv(t)
+	withServiceClientsConfig(t, []config.ServiceClientConfig{
+		{ClientID: "winnerproxy", ClientSecret: "root-secret-xyz"},
+		{ClientID: "other-service", ClientSecret: "normal-secret"},
+	})
+	config.AppConfig.OAuth2.SuperClientSecret = "root-secret-xyz"
+
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(old) })
+
+	if err := runSeed(t); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if n := countClients(t); n != 1 {
+		t.Fatalf("expected only the normal entry to be seeded, got %d rows", n)
+	}
+	var row models.OAuth2Client
+	if err := database.DB.Where("client_id = ?", "other-service").First(&row).Error; err != nil {
+		t.Fatalf("normal entry missing: %v", err)
+	}
+	var ghost models.OAuth2Client
+	if err := database.DB.Where("client_id = ?", "winnerproxy").First(&ghost).Error; err == nil {
+		t.Fatal("the super-secret entry must not be seeded")
+	}
+
+	logged := buf.String()
+	if !strings.Contains(logged, `"winnerproxy"`) || !strings.Contains(logged, "/oauth/register") {
+		t.Errorf("warning must name the entry and point at self-registration, got:\n%s", logged)
+	}
+	if strings.Contains(logged, "root-secret-xyz") {
+		t.Error("the warning must not print the super secret in any form")
+	}
+}
+
+// TestEnsureConfiguredServiceClients_SuperSecretEntryLeavesExistingRowUntouched
+// pins the guard on the existing-row path: a legacy row already carrying
+// the super secret is neither modified nor deleted; only a warning is
+// emitted.
+func TestEnsureConfiguredServiceClients_SuperSecretEntryLeavesExistingRowUntouched(t *testing.T) {
+	setupServiceClientSeedEnv(t)
+	pre := models.OAuth2Client{
+		ClientID:     "winnerproxy",
+		ClientSecret: "root-secret-xyz",
+		Name:         "winnerproxy",
+		Type:         "confidential",
+		GrantTypes:   `["client_credentials"]`,
+		RedirectURIs: "[]",
+		Scopes:       "[]",
+		IsInternal:   true,
+		IsSuper:      false,
+		IsActive:     true,
+	}
+	if err := database.DB.Create(&pre).Error; err != nil {
+		t.Fatalf("pre-seed: %v", err)
+	}
+	withServiceClientsConfig(t, []config.ServiceClientConfig{
+		{ClientID: "winnerproxy", ClientSecret: "root-secret-xyz"},
+	})
+	config.AppConfig.OAuth2.SuperClientSecret = "root-secret-xyz"
+
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(old) })
+
+	if err := runSeed(t); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n := countClients(t); n != 1 {
+		t.Fatalf("expected the existing row to stay the only one, got %d rows", n)
+	}
+	var row models.OAuth2Client
+	if err := database.DB.Where("client_id = ?", "winnerproxy").First(&row).Error; err != nil {
+		t.Fatalf("row disappeared: %v", err)
+	}
+	if row.ClientSecret != "root-secret-xyz" {
+		t.Errorf("existing row must stay untouched, secret = %q", row.ClientSecret)
+	}
+	if logged := buf.String(); !strings.Contains(logged, `"winnerproxy"`) || strings.Contains(logged, "root-secret-xyz") {
+		t.Errorf("warning must name the entry without printing the secret, got:\n%s", logged)
+	}
+}
+
+// TestEnsureConfiguredServiceClients_SuperGuardInactiveWhenSuperUnset
+// verifies the guard never fires when no super secret is configured.
+func TestEnsureConfiguredServiceClients_SuperGuardInactiveWhenSuperUnset(t *testing.T) {
+	setupServiceClientSeedEnv(t)
+	withServiceClientsConfig(t, []config.ServiceClientConfig{
+		{ClientID: "winnerproxy", ClientSecret: "whatever-secret"},
+	})
+	// SuperClientSecret stays empty.
+
+	if err := runSeed(t); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if n := countClients(t); n != 1 {
+		t.Fatalf("expected the entry to be seeded normally, got %d rows", n)
 	}
 }
 

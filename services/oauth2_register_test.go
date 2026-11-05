@@ -166,6 +166,48 @@ func TestRegisterServiceClientGetOrCreate(t *testing.T) {
 	}
 }
 
+// TestRegisterServiceClientRefusesSuperPoisonedRow pins the root-key
+// guard: a legacy row whose stored secret equals the super client secret
+// must never be handed out by get-or-create; the call refuses with
+// ErrOAuthRegistrationConflict and leaves the row untouched.
+func TestRegisterServiceClientRefusesSuperPoisonedRow(t *testing.T) {
+	setupServiceClientSeedEnv(t)
+	withScopeAllowlist(t, nil)
+	config.AppConfig.OAuth2.SuperClientSecret = "root-secret-xyz"
+
+	poisoned := models.OAuth2Client{
+		ClientID:     "winnerproxy",
+		ClientSecret: "root-secret-xyz",
+		Name:         "winnerproxy",
+		Type:         "confidential",
+		GrantTypes:   `["client_credentials"]`,
+		RedirectURIs: "[]",
+		Scopes:       "[]",
+		IsInternal:   true,
+		IsSuper:      false,
+		IsActive:     true,
+	}
+	if err := database.DB.Create(&poisoned).Error; err != nil {
+		t.Fatalf("pre-seed: %v", err)
+	}
+
+	client, created, err := NewOAuth2Service().RegisterServiceClient("winnerproxy", []string{"user.read.as-service"})
+	if !errors.Is(err, ErrOAuthRegistrationConflict) {
+		t.Fatalf("err = %v, want ErrOAuthRegistrationConflict", err)
+	}
+	if created || client != nil {
+		t.Fatal("a poisoned row must yield no client")
+	}
+
+	var row models.OAuth2Client
+	if err := database.DB.Where("client_id = ?", "winnerproxy").First(&row).Error; err != nil {
+		t.Fatalf("row disappeared: %v", err)
+	}
+	if row.ClientSecret != "root-secret-xyz" {
+		t.Errorf("poisoned row must stay untouched, secret = %q", row.ClientSecret)
+	}
+}
+
 // TestRegisterServiceClientCoexistsWithSeed pins the config-first rule: a
 // row already seeded from oauth2.service_clients is returned as-is by a
 // later self-registration call.
