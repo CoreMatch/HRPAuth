@@ -97,3 +97,41 @@ func TestParseDatabaseConfigPort(t *testing.T) {
 		t.Errorf("legacy inline host must keep working, got %q", withoutPort.Addr())
 	}
 }
+
+func TestParseOAuth2ConfigServiceClients(t *testing.T) {
+	// 缺失 service_clients 段 → 空列表（旧配置零行为变化）。
+	missing := parseOAuth2Config(map[string]interface{}{
+		"oauth2": map[string]interface{}{"super_client_id": "s"},
+	})
+	if len(missing.ServiceClients) != 0 {
+		t.Fatalf("expected no service clients when the section is missing, got %v", missing.ServiceClients)
+	}
+
+	// 显式列表按字段解析，name 可缺省。
+	parsed := parseOAuth2Config(map[string]interface{}{
+		"oauth2": map[string]interface{}{
+			"service_clients": []interface{}{
+				map[string]interface{}{
+					"client_id":     "winnerproxy",
+					"client_secret": "secret-w",
+					"name":          "WinnerProxy",
+				},
+				map[string]interface{}{
+					"client_id":     "hrpauth-yggdrasil-api",
+					"client_secret": "secret-y",
+				},
+			},
+		},
+	})
+	if len(parsed.ServiceClients) != 2 {
+		t.Fatalf("expected 2 service clients, got %v", parsed.ServiceClients)
+	}
+	first := parsed.ServiceClients[0]
+	if first.ClientID != "winnerproxy" || first.ClientSecret != "secret-w" || first.Name != "WinnerProxy" {
+		t.Errorf("unexpected first entry: %+v", first)
+	}
+	second := parsed.ServiceClients[1]
+	if second.ClientID != "hrpauth-yggdrasil-api" || second.ClientSecret != "secret-y" || second.Name != "" {
+		t.Errorf("unexpected second entry: %+v", second)
+	}
+}

@@ -521,10 +521,10 @@ func TestMigrateV11ToV12AddsDatabasePort(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !changed {
-		t.Fatal("expected v11->v12 migration to run")
+		t.Fatal("expected the migration chain to run")
 	}
-	if out["version"] != "12" {
-		t.Fatalf("expected version 12, got %v", out["version"])
+	if out["version"] != ConfigVersion {
+		t.Fatalf("expected final version %q, got %v", ConfigVersion, out["version"])
 	}
 	db := out["database"].(map[string]interface{})
 	if db["port"] != 0 {
@@ -547,5 +547,55 @@ func TestMigrateV11ToV12KeepsExistingPort(t *testing.T) {
 	db := out["database"].(map[string]interface{})
 	if db["port"] != 3307 {
 		t.Errorf("existing port must be preserved, got %v", db["port"])
+	}
+}
+
+func TestMigrateV12ToV13AddsEmptyServiceClients(t *testing.T) {
+	// 旧配置没有 oauth2.service_clients 段：迁移只补空列表，不报错。
+	cfg := map[string]interface{}{
+		"version": "12",
+		"oauth2": map[string]interface{}{
+			"super_client_id":     "hrpauth-internal-super",
+			"super_client_secret": "test-secret",
+		},
+	}
+	out, changed, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected v12->v13 migration to run")
+	}
+	if out["version"] != "13" {
+		t.Fatalf("expected version 13, got %v", out["version"])
+	}
+	oauth2 := out["oauth2"].(map[string]interface{})
+	clients, ok := oauth2["service_clients"].([]interface{})
+	if !ok {
+		t.Fatal("service_clients should be present after v12->v13")
+	}
+	if len(clients) != 0 {
+		t.Errorf("service_clients must default to empty, got %v", clients)
+	}
+}
+
+func TestMigrateV12ToV13KeepsExistingServiceClients(t *testing.T) {
+	existing := []interface{}{
+		map[string]interface{}{"client_id": "winnerproxy", "client_secret": "s"},
+	}
+	cfg := map[string]interface{}{
+		"version": "12",
+		"oauth2": map[string]interface{}{
+			"service_clients": existing,
+		},
+	}
+	out, _, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	oauth2 := out["oauth2"].(map[string]interface{})
+	clients, ok := oauth2["service_clients"].([]interface{})
+	if !ok || len(clients) != 1 {
+		t.Fatalf("existing service_clients must be preserved, got %v", oauth2["service_clients"])
 	}
 }

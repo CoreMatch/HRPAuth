@@ -154,11 +154,22 @@ type OAuth2Config struct {
 	SuperClientExtraScopes []string
 	PublicClientID         string
 	PublicRedirectURIs     []string
+	// ServiceClients 是可选的服务客户端种子列表（client_credentials，
+	// ops 级服务身份）。启动时幂等确保对应行存在于 oauth2_clients；
+	// 空列表 = 不种子任何客户端，行为与旧版本完全一致。
+	ServiceClients []ServiceClientConfig
+}
+
+// ServiceClientConfig 描述一个配置驱动的 OAuth2 服务客户端种子项。
+type ServiceClientConfig struct {
+	ClientID     string
+	ClientSecret string
+	Name         string // 可选，缺省回落到 ClientID
 }
 
 const ConfigFileName = "config.yaml"
 const ConfigFileDir = "./"
-const ConfigVersion = "12"
+const ConfigVersion = "13"
 
 var AppConfig *Config
 
@@ -398,7 +409,32 @@ func parseOAuth2Config(config map[string]interface{}) OAuth2Config {
 		SuperClientExtraScopes: getStringSlice(oauth2, "super_client_extra_scopes"),
 		PublicClientID:         getString(oauth2, "public_client_id"),
 		PublicRedirectURIs:     publicRedirectURIs,
+		ServiceClients:         parseServiceClients(oauth2),
 	}
+}
+
+// parseServiceClients 解析可选的 oauth2.service_clients 列表。
+// 缺失或非法时返回空列表（= 不种子任何客户端，行为与旧版本一致）。
+// 每项形如：
+//
+//	- client_id: "winnerproxy"
+//	  client_secret: "..."
+//	  name: "WinnerProxy"   # 可选
+func parseServiceClients(oauth2 map[string]interface{}) []ServiceClientConfig {
+	raw, _ := oauth2["service_clients"].([]interface{})
+	out := make([]ServiceClientConfig, 0, len(raw))
+	for _, item := range raw {
+		entry, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		out = append(out, ServiceClientConfig{
+			ClientID:     getString(entry, "client_id"),
+			ClientSecret: getString(entry, "client_secret"),
+			Name:         getString(entry, "name"),
+		})
+	}
+	return out
 }
 
 // parseSecurityConfig parses the top-level `security` section (HRPAuth-specific).
