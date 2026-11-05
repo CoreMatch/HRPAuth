@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log"
 	"slices"
 	"strings"
 	"time"
@@ -51,7 +52,10 @@ func (os *OAuth2Service) EnsureBuiltInClients() error {
 		if err := os.upsertBuiltInPublicClient(tx); err != nil {
 			return err
 		}
-		return os.upsertBuiltInSuperClient(tx)
+		if err := os.upsertBuiltInSuperClient(tx); err != nil {
+			return err
+		}
+		return os.ensureConfiguredServiceClients(tx)
 	})
 }
 
@@ -160,6 +164,79 @@ func (os *OAuth2Service) upsertBuiltInSuperClient(tx *gorm.DB) error {
 		return err
 	}
 	return tx.Model(&client).Updates(values).Error
+}
+
+// ensureConfiguredServiceClients idempotently seeds the operator-listed
+// service clients (config oauth2.service_clients) into oauth2_clients.
+// Each seeded row is a confidential client_credentials client with
+// is_super=false: its tokens resolve as service tokens, which satisfy
+// ops (level 2) auth checks. Rows that already exist are never modified
+// (a manually rotated secret must not be clobbered); a config/DB drift
+// only produces a warning. An empty list is a no-op.
+func (os *OAuth2Service) ensureConfiguredServiceClients(tx *gorm.DB) error {
+	for _, sc := range config.AppConfig.OAuth2.ServiceClients {
+		clientID := strings.TrimSpace(sc.ClientID)
+		clientSecret := strings.TrimSpace(sc.ClientSecret)
+		if clientID == "" || clientSecret == "" {
+			log.Printf("warning: oauth2.service_clients entry with empty client_id or client_secret skipped")
+			continue
+		}
+
+		var existing models.OAuth2Client
+		err := tx.Where("client_id = ?", clientID).First(&existing).Error
+		if err == nil {
+			// Exists: never overwrite (including the secret). Only warn on
+			// drift so operators can reconcile manually.
+			drift := existing.Type != "confidential" ||
+				existing.IsSuper ||
+				!existing.IsActive ||
+				existing.ClientSecret != clientSecret
+			if drift {
+				log.Printf("warning: OAuth2 service client %q already exists and differs from oauth2.service_clients (type/is_super/is_active/secret drift); keeping the existing database row unchanged", clientID)
+			}
+			continue
+		}
+		if !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
+
+		name := strings.TrimSpace(sc.Name)
+		if name == "" {
+			name = clientID
+		}
+		grantTypesJSON, err := marshalStringSlice([]string{"client_credentials"})
+		if err != nil {
+			return err
+		}
+		scopesJSON, err := marshalStringSlice([]string{})
+		if err != nil {
+			return err
+		}
+		client := models.OAuth2Client{
+			ClientID:     clientID,
+			ClientSecret: clientSecret,
+			Name:         name,
+			Type:         "confidential",
+			GrantTypes:   grantTypesJSON,
+			RedirectURIs: "[]",
+			Scopes:       scopesJSON,
+			IsInternal:   true,
+			IsSuper:      false,
+			IsActive:     true,
+		}
+		if err := tx.Create(&client).Error; err != nil {
+			// 并发启动时另一个进程可能已在 First 与 Create 之间插入同一
+			// client_id（唯一索引兜底）。复查到行即视为已被种子，只有
+			// 真正的数据库错误才上抛。
+			var seeded models.OAuth2Client
+			if qerr := tx.Where("client_id = ?", clientID).First(&seeded).Error; qerr == nil {
+				continue
+			}
+			return err
+		}
+		log.Printf("OAuth2 service client %q seeded from oauth2.service_clients", clientID)
+	}
+	return nil
 }
 
 func (os *OAuth2Service) AuthenticateClient(clientID, clientSecret string) (*models.OAuth2Client, error) {
