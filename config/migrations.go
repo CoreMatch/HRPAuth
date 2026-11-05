@@ -33,6 +33,8 @@ type ConfigMigration struct {
 //   - "10":  remove static internal_key from core_api and yggdrasil_api
 //   - "11":  add database connection retry settings
 //   - "12":  add optional database.port (0 = keep legacy inline host port)
+//   - "13":  add optional oauth2.service_clients (config-driven idempotent
+//     service-client seeding; empty list keeps legacy behavior)
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
@@ -46,6 +48,7 @@ func configMigrations() []ConfigMigration {
 		{FromVersion: "9", ToVersion: "10", Migrate: migrateV9ToV10},
 		{FromVersion: "10", ToVersion: "11", Migrate: migrateV10ToV11},
 		{FromVersion: "11", ToVersion: "12", Migrate: migrateV11ToV12},
+		{FromVersion: "12", ToVersion: "13", Migrate: migrateV12ToV13},
 	}
 }
 
@@ -205,6 +208,22 @@ func migrateV11ToV12(cfg map[string]interface{}, tokenGen func() string) error {
 	}
 	cfg["database"] = db
 	cfg["version"] = "12"
+	return nil
+}
+
+// migrateV12ToV13 adds the optional oauth2.service_clients list. The default
+// empty list keeps legacy behavior exactly (no clients are seeded); the
+// section is purely additive and never touches the database.
+func migrateV12ToV13(cfg map[string]interface{}, tokenGen func() string) error {
+	oauth2, _ := cfg["oauth2"].(map[string]interface{})
+	if oauth2 == nil {
+		oauth2 = map[string]interface{}{}
+	}
+	if _, exists := oauth2["service_clients"]; !exists {
+		oauth2["service_clients"] = []interface{}{}
+	}
+	cfg["oauth2"] = oauth2
+	cfg["version"] = "13"
 	return nil
 }
 

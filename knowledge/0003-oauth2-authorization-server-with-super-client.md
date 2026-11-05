@@ -32,6 +32,15 @@ boot:
   `"(config)"`; verification compares against
   `config.AppConfig.OAuth2.SuperClientSecret`,
   `services/oauth2_service.go::AuthenticateClient`).
+- Satellite service clients are declared in config (`oauth2.service_clients`,
+  each entry `client_id` / `client_secret` / optional `name`) and seeded
+  idempotently by the same startup hook
+  (`services/oauth2_service.go::ensureConfiguredServiceClients`): a missing
+  row is created as `type=confidential`, `grant_types=["client_credentials"]`,
+  `is_super=false`, `is_active=true`; an existing row is never modified
+  (config drift only logs a warning). An empty list seeds nothing. Their
+  `client_credentials` tokens resolve as service tokens and therefore satisfy
+  ops (level 2) auth checks.
 - Scope registry is split into four groups: `publicSiteScopes`,
   `serviceSiteScopes`, `targetedServiceScopes` (`*.as-service` variants), and
   `databaseScopes` (`services/oauth2_service.go::publicSiteScopes`,
@@ -51,6 +60,19 @@ boot:
 - Cost: super-client secret lives in config, so secret rotation is a config
   change, not a DB update; `db.*` scopes have no in-repo consumer (delegated to
   an external database service — not verified).
+- There is **no token exchange / downgrade mechanism**: no RFC 8693-style
+  grant, no endpoint that trades a higher-privilege token for a
+  lower-privilege one (`/oauth/token` supports exactly
+  `authorization_code` / `refresh_token` / `client_credentials`). The two
+  adjacent primitives are not exchanges: `POST /services/auth-key`
+  (`controllers/presence_controller.go::AuthKey`) requires ops-level auth and
+  issues an `X-Internal-Key` — an internal credential for
+  internal-key-gated endpoints, **not** an OAuth2 access token; and the
+  `scope` parameter of `client_credentials` only narrows scopes **at
+  issuance** against the client's own credentials
+  (`services/oauth2_service.go::resolveRequestedScopes`). Satellite services
+  therefore each need their own client credentials (built-in super client or
+  a config-seeded service client).
 
 ## Evidence
 
@@ -68,6 +90,12 @@ boot:
   `services/oauth2_service.go::upsertBuiltInPublicClient` (public WebUI
   client), `services/oauth2_service.go::upsertBuiltInSuperClient` (name
   "HRPAuth Internal Super Client", `client_credentials`-only, `is_super`).
+- Config-driven service-client seeding:
+  `services/oauth2_service.go::ensureConfiguredServiceClients`; config
+  fields `config/config.go::ServiceClientConfig`
+  (`config/config.go::parseServiceClients`); schema version 13 via
+  `config/migrations.go::migrateV12ToV13` (empty default, backward
+  compatible).
 - Super client config default: `config/migrations.go::migrateV3ToV4`
   (`super_client_id = "hrpauth-internal-super"`, auto-generated secret);
   config fields `config/config.go::SuperClientID`,
