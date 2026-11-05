@@ -112,5 +112,4 @@ pulling side (SDKHandler), not here.
   2026-11-04 having no memory of introducing or re-introducing it, so no design
   intent is inferred from it here; it is recorded only as dead code with no
   production caller, and it is deliberately kept (not deleted).
-- Not verified: current SDK addressing after `sdk_url` was removed (see
-  `ca02ad8` then `cb2ca9e`).
+- Not verified: the current SDK addressing scheme.
