@@ -17,7 +17,8 @@ HRPAuth embeds a full OAuth2 authorization server and seeds built-in clients at
 boot:
 
 - Endpoints under `/oauth/...`: `authorize`, `login-ticket`,
-  `authorize/decision`, `token`, `revoke` (`main.go:L188-L192`). Token grants:
+  `authorize/decision`, `token`, `revoke`, `register`
+  (`main.go:L188-L193`). Token grants:
   `authorization_code`, `refresh_token`, `client_credentials`
   (`controllers/oauth2_controller.go::Token`). PKCE S256 is enforced
   (`services/oauth2_service.go::ValidateAuthorizationRequest`,
@@ -41,6 +42,29 @@ boot:
   (config drift only logs a warning). An empty list seeds nothing. Their
   `client_credentials` tokens resolve as service tokens and therefore satisfy
   ops (level 2) auth checks.
+- Satellite services may also obtain their client credentials through
+  **self-service registration** at `POST /oauth/register`
+  (`controllers/oauth2_controller.go::RegisterClient`), an RFC 7591
+  *protected registration* endpoint: the initial access credential is the
+  built-in super client, authenticated with `client_secret_basic`
+  (RFC 6749 §2.3.1); user tokens are rejected. The requested `client_name`
+  must already be presence-registered, and granted scopes are bounded by the
+  per-service allowlist `oauth2.service_scope_allowlist`
+  (`services/oauth2_service.go::ServiceRegistrationScopes`) intersected with
+  the known service scope set — super privileges and `db.*` scopes can never
+  be granted this way. Issued rows are fixed to `type=confidential`,
+  `grant_types=["client_credentials"]`, `is_super=false`, `is_active=true`.
+  Re-registering an existing service returns its existing credentials
+  unchanged: a **get-or-create extension** on top of RFC 7591 (which issues
+  a fresh client per registration), registered as such in the contract. The
+  response is `201` with `client_id`, `client_secret`, `client_id_issued_at`
+  and `client_secret_expires_at = 0` (the secret never expires). Config
+  seeding and self-registration coexist: a config-seeded row wins, and a
+  later self-registration for the same name just returns it. RFC 7591 §3
+  requires TLS for the registration endpoint; running it over HTTP is an
+  operational exception limited to the isolated dev intranet. Every call is
+  audit-logged (`[CLIENT-REG]` lines: caller, service, requested scopes,
+  outcome, timestamp).
 - Scope registry is split into four groups: `publicSiteScopes`,
   `serviceSiteScopes`, `targetedServiceScopes` (`*.as-service` variants), and
   `databaseScopes` (`services/oauth2_service.go::publicSiteScopes`,
@@ -71,16 +95,28 @@ boot:
   `scope` parameter of `client_credentials` only narrows scopes **at
   issuance** against the client's own credentials
   (`services/oauth2_service.go::resolveRequestedScopes`). Satellite services
-  therefore each need their own client credentials (built-in super client or
-  a config-seeded service client).
+  therefore each need their own client credentials — obtained either from
+  the `oauth2.service_clients` config seed or from self-service
+  registration. The registration endpoint is **credential issuance, not a
+  token exchange**: the super client's credentials are only the gate for
+  creating/fetching a per-service low-privilege client
+  (`controllers/oauth2_controller.go::RegisterClient`); no issued access
+  token is ever traded or downgraded. The deployment model built on this:
+  operators only configure the super credentials per satellite; the
+  satellite exchanges them for its own client credentials at startup and
+  discards the super secret from memory afterwards (the config file keeps
+  it — the program never modifies its own config). Because get-or-create
+  returns the same stable `client_id`/`client_secret` on every call, a
+  restart can re-derive the credentials without persisting them.
 
 ## Evidence
 
-- OAuth2 endpoints: `main.go:L188-L192`; handlers
+- OAuth2 endpoints: `main.go:L188-L193`; handlers
   `controllers/oauth2_controller.go::Authorize`,
   `controllers/oauth2_controller.go::AuthorizeDecision`,
   `controllers/oauth2_controller.go::Token`,
-  `controllers/oauth2_controller.go::Revoke`.
+  `controllers/oauth2_controller.go::Revoke`,
+  `controllers/oauth2_controller.go::RegisterClient`.
 - Client model: `models/models.go::OAuth2Client`
   (`type enum('public','confidential')`, `is_internal`, `is_super`,
   `is_active`); DDL
@@ -95,6 +131,16 @@ boot:
   fields `config/config.go::ServiceClientConfig`
   (`config/config.go::parseServiceClients`); schema version 13 via
   `config/migrations.go::migrateV12ToV13` (empty default, backward
+  compatible).
+- Self-service registration:
+  `services/oauth2_service.go::RegisterServiceClient` (get-or-create),
+  `services/oauth2_service.go::ServiceRegistrationScopes` (allowlist
+  intersection); Basic-only credential parsing
+  `controllers/oauth2_controller.go::basicClientCredentials`; audit line
+  `controllers/oauth2_controller.go::auditClientRegistration`; allowlist
+  config field `config/config.go::ServiceScopeAllowlist`
+  (`config/config.go::parseServiceScopeAllowlist`), schema version 14 via
+  `config/migrations.go::migrateV13ToV14` (empty default, backward
   compatible).
 - Super client config default: `config/migrations.go::migrateV3ToV4`
   (`super_client_id = "hrpauth-internal-super"`, auto-generated secret);

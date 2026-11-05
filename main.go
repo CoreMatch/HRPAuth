@@ -190,6 +190,7 @@ func main() {
 		api.POST("/oauth/authorize/decision", oauth2Ctrl.AuthorizeDecision)
 		api.POST("/oauth/token", oauth2Ctrl.Token)
 		api.POST("/oauth/revoke", oauth2Ctrl.Revoke)
+		api.POST("/oauth/register", oauth2Ctrl.RegisterClient)
 		api.POST("/webauthn/register/begin", webauthnCtrl.BeginRegistration)
 		api.POST("/webauthn/register/finish", webauthnCtrl.FinishRegistration)
 		api.GET("/webauthn/credentials", webauthnCtrl.ListCredentials)

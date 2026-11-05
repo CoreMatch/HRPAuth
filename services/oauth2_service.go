@@ -28,6 +28,10 @@ var (
 	ErrOAuthAccessDenied         = errors.New("access_denied")
 	ErrOAuthInvalidTarget        = errors.New("invalid_target")
 	ErrOAuthInsufficientScope    = errors.New("insufficient_scope")
+	// ErrOAuthInvalidClientMetadata is the RFC 7591 §3.2.2 error for a
+	// self-service registration request whose client metadata (service name
+	// or scope) fails validation; it maps to HTTP 400.
+	ErrOAuthInvalidClientMetadata = errors.New("invalid_client_metadata")
 )
 
 type OAuth2Service struct{}
@@ -237,6 +241,91 @@ func (os *OAuth2Service) ensureConfiguredServiceClients(tx *gorm.DB) error {
 		log.Printf("OAuth2 service client %q seeded from oauth2.service_clients", clientID)
 	}
 	return nil
+}
+
+// ServiceRegistrationScopes resolves the scope grant for a self-service
+// client registration (POST /oauth/register). Each requested scope must be
+// a known service scope (serviceSiteScopes — super privileges and db.*
+// scopes can never be granted this way) and appear in the service's
+// configured allowlist (oauth2.service_scope_allowlist). An empty request
+// falls back to the service's full allowlist, intersected with the known
+// service scopes so misconfigured allowlist entries never take effect.
+// Any violation yields ErrOAuthInvalidClientMetadata.
+func (os *OAuth2Service) ServiceRegistrationScopes(serviceName, scope string) ([]string, error) {
+	known := serviceSiteScopes()
+	allowlist := config.AppConfig.OAuth2.ServiceScopeAllowlist[serviceName]
+
+	requested := splitScopes(scope)
+	if len(requested) == 0 {
+		granted := make([]string, 0, len(allowlist))
+		for _, item := range allowlist {
+			if slices.Contains(known, item) && !slices.Contains(granted, item) {
+				granted = append(granted, item)
+			}
+		}
+		return granted, nil
+	}
+
+	granted := make([]string, 0, len(requested))
+	for _, item := range requested {
+		if !slices.Contains(known, item) || !slices.Contains(allowlist, item) {
+			return nil, ErrOAuthInvalidClientMetadata
+		}
+		if !slices.Contains(granted, item) {
+			granted = append(granted, item)
+		}
+	}
+	return granted, nil
+}
+
+// RegisterServiceClient implements the get-or-create semantics of the
+// self-service registration endpoint: the client_id is the presence
+// service name; an existing row is returned unchanged (including its
+// secret), otherwise a confidential client_credentials client with
+// is_super=false is created. This idempotency is an extension on top of
+// RFC 7591, which issues a fresh client per registration. The second
+// return value reports whether a new row was created.
+func (os *OAuth2Service) RegisterServiceClient(serviceName string, scopes []string) (*models.OAuth2Client, bool, error) {
+	var existing models.OAuth2Client
+	err := database.DB.Where("client_id = ?", serviceName).First(&existing).Error
+	if err == nil {
+		return &existing, false, nil
+	}
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, false, err
+	}
+
+	grantTypesJSON, err := marshalStringSlice([]string{"client_credentials"})
+	if err != nil {
+		return nil, false, err
+	}
+	scopesJSON, err := marshalStringSlice(scopes)
+	if err != nil {
+		return nil, false, err
+	}
+	client := models.OAuth2Client{
+		ClientID:     serviceName,
+		ClientSecret: utils.GenerateRandomToken(32),
+		Name:         serviceName,
+		Type:         "confidential",
+		GrantTypes:   grantTypesJSON,
+		RedirectURIs: "[]",
+		Scopes:       scopesJSON,
+		IsInternal:   true,
+		IsSuper:      false,
+		IsActive:     true,
+	}
+	if err := database.DB.Create(&client).Error; err != nil {
+		// 并发注册时另一个请求可能已在 First 与 Create 之间插入同一
+		// client_id（唯一索引兜底）。复查到行即视为 get，只有真正的
+		// 数据库错误才上抛。
+		var raced models.OAuth2Client
+		if qerr := database.DB.Where("client_id = ?", serviceName).First(&raced).Error; qerr == nil {
+			return &raced, false, nil
+		}
+		return nil, false, err
+	}
+	return &client, true, nil
 }
 
 func (os *OAuth2Service) AuthenticateClient(clientID, clientSecret string) (*models.OAuth2Client, error) {

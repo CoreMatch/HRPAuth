@@ -71,6 +71,7 @@ const (
 	CodeOAuthInvalidCodeChallenge      = "oauth_invalid_code_challenge"
 	CodeOAuthInsufficientScope         = "oauth_insufficient_scope"
 	CodeOAuthAccessDenied              = "oauth_access_denied"
+	CodeOAuthInvalidClientMetadata     = "invalid_client_metadata"
 	CodeOAuthLoginRequired             = "oauth_login_required"
 	CodeLoginTicketRequired            = "login_ticket_required"
 	CodeInvalidLoginTicket             = "invalid_login_ticket"

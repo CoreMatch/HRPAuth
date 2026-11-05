@@ -35,6 +35,9 @@ type ConfigMigration struct {
 //   - "12":  add optional database.port (0 = keep legacy inline host port)
 //   - "13":  add optional oauth2.service_clients (config-driven idempotent
 //     service-client seeding; empty list keeps legacy behavior)
+//   - "14":  add optional oauth2.service_scope_allowlist (per-service scope
+//     allowlist for the self-service client registration endpoint; empty map
+//     keeps legacy behavior)
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
@@ -49,6 +52,7 @@ func configMigrations() []ConfigMigration {
 		{FromVersion: "10", ToVersion: "11", Migrate: migrateV10ToV11},
 		{FromVersion: "11", ToVersion: "12", Migrate: migrateV11ToV12},
 		{FromVersion: "12", ToVersion: "13", Migrate: migrateV12ToV13},
+		{FromVersion: "13", ToVersion: "14", Migrate: migrateV13ToV14},
 	}
 }
 
@@ -224,6 +228,25 @@ func migrateV12ToV13(cfg map[string]interface{}, tokenGen func() string) error {
 	}
 	cfg["oauth2"] = oauth2
 	cfg["version"] = "13"
+	return nil
+}
+
+// migrateV13ToV14 adds the optional oauth2.service_scope_allowlist map used
+// by the self-service client registration endpoint (POST /oauth/register)
+// to bound the scopes each presence-registered service may request. The
+// default empty map means no service can obtain any scope through
+// self-registration; the section is purely additive and never touches the
+// database.
+func migrateV13ToV14(cfg map[string]interface{}, tokenGen func() string) error {
+	oauth2, _ := cfg["oauth2"].(map[string]interface{})
+	if oauth2 == nil {
+		oauth2 = map[string]interface{}{}
+	}
+	if _, exists := oauth2["service_scope_allowlist"]; !exists {
+		oauth2["service_scope_allowlist"] = map[string]interface{}{}
+	}
+	cfg["oauth2"] = oauth2
+	cfg["version"] = "14"
 	return nil
 }
 
