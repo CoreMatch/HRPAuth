@@ -45,7 +45,7 @@ func (w *HeartbeatWorker) CheckAll() {
 		// A better way is to use the relay_url if available in presence record.
 		// However, presence record doesn't store the base URL yet.
 		// For now, we only support the Yggdrasil API specifically as requested.
-		
+
 		if record.Name == config.AppConfig.OAuth2.SuperClientID {
 			w.checkService(record)
 		}
@@ -55,7 +55,7 @@ func (w *HeartbeatWorker) CheckAll() {
 func (w *HeartbeatWorker) checkService(record PresenceRecord) {
 	// Use Yggdrasil base URL from config for the heartbeat check
 	url := fmt.Sprintf("%s/internal/heartbeat", config.AppConfig.YggdrasilAPI.BaseURL)
-	
+
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		log.Printf("[CORE-HB] Failed to create request for %s: %v", record.Name, err)
