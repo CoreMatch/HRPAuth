@@ -40,7 +40,11 @@ boot:
   `is_super=false`, `is_active=true`; an existing row is never modified
   (config drift only logs a warning). An empty list seeds nothing. Their
   `client_credentials` tokens resolve as service tokens and therefore satisfy
-  ops (level 2) auth checks.
+  ops (level 2) auth checks. Entries whose `client_secret` equals the super
+  client secret are **skipped with a warning** before any create/lookup
+  (constant-time comparison, `services/oauth2_service.go::isSuperClientSecret`):
+  the root credential is never copied into an ordinary client row; the
+  affected service is expected to self-register via `POST /oauth/register`.
 - Satellite services may also obtain their client credentials through
   **self-service registration** at `POST /oauth/register`
   (`controllers/oauth2_controller.go::RegisterClient`), an RFC 7591
@@ -55,7 +59,12 @@ boot:
   `grant_types=["client_credentials"]`, `is_super=false`, `is_active=true`.
   Re-registering an existing service returns its existing credentials
   unchanged: a **get-or-create extension** on top of RFC 7591 (which issues
-  a fresh client per registration), registered as such in the contract. The
+  a fresh client per registration), registered as such in the contract.
+  One exception: an existing row whose stored secret equals the super
+  client secret (legacy poisoned data) is **refused**, never returned —
+  handing it out would distribute the root credential
+  (`services/oauth2_service.go::ErrOAuthRegistrationConflict`, surfaced as
+  `400 invalid_client_metadata` with an operator-actionable message). The
   response is `201` with `client_id`, `client_secret`, `client_id_issued_at`
   and `client_secret_expires_at = 0` (the secret never expires). Config
   seeding and self-registration coexist: a config-seeded row wins, and a
