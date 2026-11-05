@@ -1,7 +1,6 @@
 # ADR-0001: Generic Auth Core — Yggdrasil and Skins Split Out
 
 - **Status**: accepted
-- **Date**: 2026-11-04
 
 ## Context
 

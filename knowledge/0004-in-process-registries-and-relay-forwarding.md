@@ -1,7 +1,6 @@
 # ADR-0004: In-Process Registries and Relay/Orchestration Forwarding
 
 - **Status**: accepted
-- **Date**: 2026-11-04
 
 ## Context
 

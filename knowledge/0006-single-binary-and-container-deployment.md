@@ -1,7 +1,6 @@
 # ADR-0006: Two Deployment Forms — Single Binary and Container Image
 
 - **Status**: accepted
-- **Date**: 2026-11-04
 
 ## Context
 

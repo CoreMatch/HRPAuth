@@ -20,7 +20,7 @@ conflict to the owner.
 
 Each entry is one page in ADR style:
 
-- **Status** (`accepted` / `superseded` / ...), **Date**
+- **Status** (`accepted` / `superseded` / ...)
 - **Context** — the problem and constraints
 - **Decision** — what was chosen
 - **Consequences** — including costs and limitations
@@ -33,12 +33,12 @@ Each entry is one page in ADR style:
 
 ## Entries
 
-| # | Title | Status | Date |
-|---|-------|--------|------|
-| [0001](0001-generic-auth-core-yggdrasil-split-out.md) | Generic Auth Core: Yggdrasil and Skins Split Out | accepted | 2026-11-04 |
-| [0002](0002-account-model-with-four-second-factors.md) | Account Model with Four Second Factors | accepted | 2026-11-04 |
-| [0003](0003-oauth2-authorization-server-with-super-client.md) | OAuth2 Authorization Server with Built-in Super Client | accepted | 2026-11-04 |
-| [0004](0004-in-process-registries-and-relay-forwarding.md) | In-Process Registries and Relay/Orchestration Forwarding | accepted | 2026-11-04 |
-| [0005](0005-versioned-config-schema-and-migration-chain.md) | Versioned Config Schema and Migration Chain | accepted | 2026-11-04 |
-| [0006](0006-single-binary-and-container-deployment.md) | Two Deployment Forms: Single Binary and Container Image | accepted | 2026-11-04 |
-| [0007](0007-internal-verify-token-and-claim-user-endpoints.md) | Internal Endpoints for Yggdrasil-API: verify-token and claim-user | accepted | 2026-11-05 |
+| # | Title | Status |
+|---|-------|--------|
+| [0001](0001-generic-auth-core-yggdrasil-split-out.md) | Generic Auth Core: Yggdrasil and Skins Split Out | accepted |
+| [0002](0002-account-model-with-four-second-factors.md) | Account Model with Four Second Factors | accepted |
+| [0003](0003-oauth2-authorization-server-with-super-client.md) | OAuth2 Authorization Server with Built-in Super Client | accepted |
+| [0004](0004-in-process-registries-and-relay-forwarding.md) | In-Process Registries and Relay/Orchestration Forwarding | accepted |
+| [0005](0005-versioned-config-schema-and-migration-chain.md) | Versioned Config Schema and Migration Chain | accepted |
+| [0006](0006-single-binary-and-container-deployment.md) | Two Deployment Forms: Single Binary and Container Image | accepted |
+| [0007](0007-internal-verify-token-and-claim-user-endpoints.md) | Internal Endpoints for Yggdrasil-API: verify-token and claim-user | accepted |

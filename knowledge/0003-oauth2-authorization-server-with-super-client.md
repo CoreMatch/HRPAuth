@@ -1,7 +1,6 @@
 # ADR-0003: OAuth2 Authorization Server with Built-in Super Client
 
 - **Status**: accepted
-- **Date**: 2026-11-04
 
 ## Context
 
