@@ -451,9 +451,9 @@ func parseServiceScopeAllowlist(oauth2 map[string]interface{}) map[string][]stri
 // 缺失或非法时返回空列表（= 不种子任何客户端，行为与旧版本一致）。
 // 每项形如：
 //
-//	- client_id: "winnerproxy"
-//	  client_secret: "..."
-//	  name: "WinnerProxy"   # 可选
+//   - client_id: "winnerproxy"
+//     client_secret: "..."
+//     name: "WinnerProxy"   # 可选
 func parseServiceClients(oauth2 map[string]interface{}) []ServiceClientConfig {
 	raw, _ := oauth2["service_clients"].([]interface{})
 	out := make([]ServiceClientConfig, 0, len(raw))

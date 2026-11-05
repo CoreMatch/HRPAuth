@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -23,6 +24,7 @@ type OAuth2Controller struct {
 	authService   *services.AuthService
 	oauth2Service *services.OAuth2Service
 	hookExecutor  *HookExecutor
+	presence      *registry.PresenceRegistry
 }
 
 type AuthorizationDecisionRequest struct {
@@ -63,6 +65,7 @@ func NewOAuth2Controller(hookRegistry *HookRegistry, presence *registry.Presence
 		authService:   services.NewAuthService(),
 		oauth2Service: services.NewOAuth2Service(),
 		hookExecutor:  NewHookExecutor(hookRegistry, presence),
+		presence:      presence,
 	}
 }
 
@@ -290,6 +293,115 @@ func (oc *OAuth2Controller) Revoke(c *gin.Context) {
 	respondOK(c, "OAuth2 token revoked", nil)
 }
 
+// RegisterClientRequest carries RFC 7591 client metadata for self-service
+// registration. Only client_name and scope are honored; all other metadata
+// fields are ignored because the issued client attributes are fixed by the
+// server (confidential, client_credentials, is_super=false).
+type RegisterClientRequest struct {
+	ClientName string `json:"client_name"`
+	Scope      string `json:"scope"`
+}
+
+// RegisterClient implements RFC 7591 protected client registration. The
+// initial access credential is the built-in super client, authenticated via
+// client_secret_basic (RFC 6749 §2.3.1); user tokens and any other caller
+// are rejected with 401. The requested client_name must already be
+// registered via /services/presence, and the requested scopes must stay
+// inside the service's oauth2.service_scope_allowlist entry (super and db.*
+// scopes can never be granted). Re-registering an existing service returns
+// its existing credentials unchanged — a get-or-create extension documented
+// in the contract; RFC 7591 itself issues a fresh client per registration.
+// Every call is audit-logged (caller, service, requested scopes, outcome).
+func (oc *OAuth2Controller) RegisterClient(c *gin.Context) {
+	clientID, clientSecret, ok := basicClientCredentials(c.GetHeader("Authorization"))
+	if !ok {
+		oc.auditClientRegistration(c, "", "", "", "denied: client_secret_basic required")
+		oc.respondOAuthError(c, services.ErrOAuthInvalidClient)
+		return
+	}
+
+	caller, err := oc.oauth2Service.AuthenticateClient(clientID, clientSecret)
+	if err != nil || !caller.IsSuper || !caller.IsInternal || caller.ClientID != config.AppConfig.OAuth2.SuperClientID {
+		oc.auditClientRegistration(c, clientID, "", "", "denied: caller is not the built-in super client")
+		oc.respondOAuthError(c, services.ErrOAuthInvalidClient)
+		return
+	}
+
+	var req RegisterClientRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		oc.auditClientRegistration(c, caller.ClientID, "", "", "denied: invalid request body")
+		oc.respondOAuthError(c, services.ErrOAuthInvalidClientMetadata)
+		return
+	}
+	serviceName := strings.TrimSpace(req.ClientName)
+	if serviceName == "" {
+		oc.auditClientRegistration(c, caller.ClientID, "", req.Scope, "denied: missing client_name")
+		oc.respondOAuthError(c, services.ErrOAuthInvalidClientMetadata)
+		return
+	}
+
+	if _, registered := oc.presence.Get(serviceName); !registered {
+		oc.auditClientRegistration(c, caller.ClientID, serviceName, req.Scope, "denied: service not in presence registry")
+		oc.respondOAuthError(c, services.ErrOAuthInvalidClientMetadata)
+		return
+	}
+
+	scopes, err := oc.oauth2Service.ServiceRegistrationScopes(serviceName, req.Scope)
+	if err != nil {
+		oc.auditClientRegistration(c, caller.ClientID, serviceName, req.Scope, "denied: scope not allowed")
+		oc.respondOAuthError(c, err)
+		return
+	}
+
+	client, created, err := oc.oauth2Service.RegisterServiceClient(serviceName, scopes)
+	if err != nil {
+		oc.auditClientRegistration(c, caller.ClientID, serviceName, req.Scope, "error: "+err.Error())
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to register client")
+		return
+	}
+
+	result := "existing client returned"
+	if created {
+		result = "client created"
+	}
+	oc.auditClientRegistration(c, caller.ClientID, serviceName, req.Scope, result)
+
+	respondCreated(c, "OAuth2 client registered", gin.H{
+		"client_id":                client.ClientID,
+		"client_secret":            client.ClientSecret,
+		"client_id_issued_at":      client.CreatedAt.Unix(),
+		"client_secret_expires_at": 0, // 0 = the client secret never expires
+		"scope":                    strings.Join(parseScopesOrNil(client.Scopes), " "),
+	})
+}
+
+// auditClientRegistration writes the mandatory audit line for every
+// POST /oauth/register call (caller, service name, requested scopes,
+// outcome; the timestamp is contributed by the std logger prefix).
+func (oc *OAuth2Controller) auditClientRegistration(c *gin.Context, caller, service, scope, result string) {
+	log.Printf("[CLIENT-REG] request_id=%s caller=%q service=%q scopes=%q result=%s",
+		requestIDFrom(c), caller, service, scope, result)
+}
+
+// basicClientCredentials extracts client_secret_basic credentials
+// (RFC 6749 §2.3.1) from the Authorization header. Only the Basic scheme
+// is accepted; Bearer tokens and request-body credentials are rejected.
+func basicClientCredentials(authHeader string) (string, string, bool) {
+	const prefix = "basic "
+	if len(authHeader) < len(prefix) || !strings.EqualFold(authHeader[:len(prefix)], prefix) {
+		return "", "", false
+	}
+	raw, err := base64.StdEncoding.DecodeString(strings.TrimSpace(authHeader[len(prefix):]))
+	if err != nil {
+		return "", "", false
+	}
+	parts := strings.SplitN(string(raw), ":", 2)
+	if len(parts) != 2 {
+		return "", "", false
+	}
+	return parts[0], parts[1], true
+}
+
 func (oc *OAuth2Controller) respondTokenPair(c *gin.Context, accessToken *models.OAuth2AccessToken, refreshToken *models.OAuth2RefreshToken) {
 	scope := ""
 	if accessToken != nil {
@@ -324,6 +436,8 @@ func (oc *OAuth2Controller) respondOAuthError(c *gin.Context, err error) {
 		respondError(c, http.StatusForbidden, CodeOAuthInsufficientScope, "insufficient scope")
 	case errors.Is(err, services.ErrOAuthAccessDenied):
 		respondError(c, http.StatusForbidden, CodeOAuthAccessDenied, "access denied")
+	case errors.Is(err, services.ErrOAuthInvalidClientMetadata):
+		respondError(c, http.StatusBadRequest, CodeOAuthInvalidClientMetadata, "invalid client metadata")
 	default:
 		respondError(c, http.StatusInternalServerError, CodeInternalError, "oauth2 error")
 	}
