@@ -1,7 +1,6 @@
 # ADR-0007: Internal Endpoints for Yggdrasil-API — verify-token and claim-user
 
 - **Status**: accepted
-- **Date**: 2026-11-05
 
 ## Context
 

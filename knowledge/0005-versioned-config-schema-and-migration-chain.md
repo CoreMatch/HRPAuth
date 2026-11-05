@@ -1,7 +1,6 @@
 # ADR-0005: Versioned Config Schema and Migration Chain
 
 - **Status**: accepted
-- **Date**: 2026-11-04
 
 ## Context
 
@@ -14,8 +13,8 @@ schema changes need their own mechanism.
 Two separate versioning mechanisms exist:
 
 1. **Config file schema** — carries a `version` field (current constant
-   `ConfigVersion = "12"`). On startup the core loads the config, checks the
-   version, and runs a **stepwise migration chain** (v1→2→…→12) that rewrites
+   `ConfigVersion = "14"`). On startup the core loads the config, checks the
+   version, and runs a **stepwise migration chain** (v1→2→…→14) that rewrites
    the file in place after making a backup and writing atomically
    (tmp + rename). A version mismatch warns but does not block startup.
 2. **Database schema** — uses golang-migrate with SQL embedded via `embed.FS`,
@@ -26,8 +25,19 @@ Two separate versioning mechanisms exist:
 
 ## Consequences
 
-- The config migration chain is retained in code as history (v1→v12), so older
+- The config migration chain is retained in code as history (v1→v14), so older
   deployments upgrade automatically; each step records what it added or removed.
+- The current schema carries two optional `oauth2` sections added by the
+  latest steps, both purely additive and database-untouched:
+  `oauth2.service_clients` — a seed list of `client_credentials` service
+  clients (ops-level service identities) idempotently ensured in
+  `oauth2_clients` at startup; an empty list seeds nothing
+  (`config/config.go::ServiceClients`).
+  `oauth2.service_scope_allowlist` — a service-name → allowed-scopes map
+  bounding what each presence-registered service may obtain through the
+  self-registration endpoint (`POST /oauth/register`); an empty map means no
+  service can acquire any scope through self-registration
+  (`config/config.go::ServiceScopeAllowlist`).
 - The v7→8 step is where Minecraft/Yggdrasil config keys were dropped, matching
   the split in ADR-0001.
 - Cost/limitation: full config reference and DB migration rules are documented
@@ -40,7 +50,7 @@ Two separate versioning mechanisms exist:
 ## Evidence
 
 - Version constant and load: `config/config.go::ConfigVersion`
-  (`ConfigVersion = "12"`), `config/config.go::Load` (`Load()`; version check
+  (`ConfigVersion = "14"`), `config/config.go::Load` (`Load()`; version check
   warns, does not block), `config/config.go::Config` (`Config` struct with
   `Version`).
 - Startup migration entry: `main.go::InitializeConfig` →
@@ -61,7 +71,11 @@ Two separate versioning mechanisms exist:
   `config/migrations.go::migrateV8ToV9` (v8→9 sdk_packages),
   `config/migrations.go::migrateV9ToV10` (v9→10 drop internal_key),
   `config/migrations.go::migrateV10ToV11` (v10→11 DB retry params),
-  `config/migrations.go::migrateV11ToV12` (v11→12 optional database.port).
+  `config/migrations.go::migrateV11ToV12` (v11→12 optional database.port),
+  `config/migrations.go::migrateV12ToV13` (v12→13 optional
+  `oauth2.service_clients`),
+  `config/migrations.go::migrateV13ToV14` (v13→14 optional
+  `oauth2.service_scope_allowlist`).
 - DB migration mechanism: `database/migrations/migrations.go::FS` (embedded
   FS); `controllers/startup_controller.go::EnsureMigrations`,
   `controllers/startup_controller.go::ensureSchemaMigrationTable` /
