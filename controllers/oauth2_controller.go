@@ -355,6 +355,16 @@ func (oc *OAuth2Controller) RegisterClient(c *gin.Context) {
 
 	client, created, err := oc.oauth2Service.RegisterServiceClient(serviceName, scopes)
 	if err != nil {
+		if errors.Is(err, services.ErrOAuthRegistrationConflict) {
+			// An existing row carries the super client secret (legacy
+			// poisoned data). It must never be returned — refuse with an
+			// actionable message instead of distributing the root
+			// credential.
+			oc.auditClientRegistration(c, caller.ClientID, serviceName, req.Scope, "denied: existing row carries the super client secret")
+			respondError(c, http.StatusBadRequest, CodeOAuthInvalidClientMetadata,
+				"client_name conflicts with a legacy client row carrying the super client secret; an operator must remove or re-secret that row before self-registration can proceed")
+			return
+		}
 		oc.auditClientRegistration(c, caller.ClientID, serviceName, req.Scope, "error: "+err.Error())
 		respondError(c, http.StatusInternalServerError, CodeInternalError, "Failed to register client")
 		return

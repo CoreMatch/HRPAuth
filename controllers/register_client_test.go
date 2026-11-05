@@ -376,6 +376,78 @@ func TestRegisterClientAuditLog(t *testing.T) {
 	}
 }
 
+// TestRegisterClientRefusesLegacySuperSecretRow pins the root-key guard
+// end to end: a legacy row whose stored secret equals the super client
+// secret must never be returned to the caller. The endpoint refuses with
+// 400 invalid_client_metadata and an actionable message, the row stays
+// untouched, and neither the response nor the audit log leaks the secret.
+func TestRegisterClientRefusesLegacySuperSecretRow(t *testing.T) {
+	r := setupRegisterClientEnv(t)
+	seedSuperClientRow(t)
+
+	poisoned := models.OAuth2Client{
+		ClientID:     "winnerproxy",
+		ClientSecret: "super-secret", // equals config SuperClientSecret in this env
+		Name:         "winnerproxy",
+		Type:         "confidential",
+		GrantTypes:   `["client_credentials"]`,
+		RedirectURIs: "[]",
+		Scopes:       "[]",
+		IsInternal:   true,
+		IsSuper:      false,
+		IsActive:     true,
+	}
+	if err := database.DB.Create(&poisoned).Error; err != nil {
+		t.Fatalf("pre-seed: %v", err)
+	}
+
+	var buf bytes.Buffer
+	old := log.Writer()
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(old) })
+
+	w := doRegisterClientRequest(t, r, basicAuthHeader("test-super", "super-secret"),
+		`{"client_name":"winnerproxy","scope":"user.read.as-service"}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, body = %s; want 400", w.Code, w.Body.String())
+	}
+	body := decodeBody(t, w)
+	if errorCode(body) != CodeOAuthInvalidClientMetadata {
+		t.Errorf("code = %q, want %q", errorCode(body), CodeOAuthInvalidClientMetadata)
+	}
+	msg, _ := body["message"].(string)
+	if !strings.Contains(msg, "super client secret") {
+		t.Errorf("message must explain the poisoned-row conflict, got %q", msg)
+	}
+
+	// The root credential must appear nowhere in the response or the audit
+	// trail (the Basic header of the request is never echoed).
+	if strings.Contains(w.Body.String(), "super-secret") {
+		t.Error("response body leaks the super secret")
+	}
+	if logged := buf.String(); !strings.Contains(logged, "denied: existing row carries the super client secret") {
+		t.Errorf("audit log missing the conflict denial; got:\n%s", logged)
+	} else if strings.Contains(logged, "super-secret") {
+		t.Error("audit log leaks the super secret")
+	}
+
+	// Row untouched, still the only one.
+	var row models.OAuth2Client
+	if err := database.DB.Where("client_id = ?", "winnerproxy").First(&row).Error; err != nil {
+		t.Fatalf("row disappeared: %v", err)
+	}
+	if row.ClientSecret != "super-secret" {
+		t.Errorf("poisoned row must stay untouched, secret changed")
+	}
+	var n int64
+	if err := database.DB.Model(&models.OAuth2Client{}).Where("client_id = ?", "winnerproxy").Count(&n).Error; err != nil {
+		t.Fatalf("count: %v", err)
+	}
+	if n != 1 {
+		t.Fatalf("expected exactly 1 row, got %d", n)
+	}
+}
+
 // TestRegisterClientCoexistsWithConfigSeed pins the config-first rule: a
 // client already seeded from oauth2.service_clients is returned unchanged
 // by a later self-registration call (no second row, seeded secret kept).

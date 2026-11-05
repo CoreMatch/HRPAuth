@@ -2,6 +2,7 @@ package services
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -32,7 +33,24 @@ var (
 	// self-service registration request whose client metadata (service name
 	// or scope) fails validation; it maps to HTTP 400.
 	ErrOAuthInvalidClientMetadata = errors.New("invalid_client_metadata")
+	// ErrOAuthRegistrationConflict is returned when self-service
+	// registration hits an existing row whose stored secret equals the
+	// super client secret (legacy poisoned data). The row must never be
+	// handed out — returning it would distribute the root credential.
+	ErrOAuthRegistrationConflict = errors.New("registration_conflict")
 )
+
+// isSuperClientSecret reports whether secret equals the configured super
+// client secret, using a constant-time comparison. An empty secret or an
+// unconfigured super secret never matches, so deployments without a super
+// secret are unaffected by the guard.
+func isSuperClientSecret(secret string) bool {
+	super := config.AppConfig.OAuth2.SuperClientSecret
+	if super == "" || secret == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(secret), []byte(super)) == 1
+}
 
 type OAuth2Service struct{}
 
@@ -186,6 +204,17 @@ func (os *OAuth2Service) ensureConfiguredServiceClients(tx *gorm.DB) error {
 			continue
 		}
 
+		// Guard: an entry carrying the super client secret must never be
+		// seeded — it would copy the root credential into an ordinary
+		// client row. Checked before the create branch so an already
+		// existing row is left untouched as well (warning only). The
+		// affected service should obtain its own credentials through the
+		// self-service registration endpoint instead.
+		if isSuperClientSecret(clientSecret) {
+			log.Printf("warning: oauth2.service_clients entry %q carries the super client secret and was skipped (nothing created or modified); the service should self-register via POST /oauth/register to obtain its own credentials", clientID)
+			continue
+		}
+
 		var existing models.OAuth2Client
 		err := tx.Where("client_id = ?", clientID).First(&existing).Error
 		if err == nil {
@@ -289,6 +318,14 @@ func (os *OAuth2Service) RegisterServiceClient(serviceName string, scopes []stri
 	var existing models.OAuth2Client
 	err := database.DB.Where("client_id = ?", serviceName).First(&existing).Error
 	if err == nil {
+		// Never hand out a row whose stored secret equals the super
+		// client secret (legacy poisoned data, e.g. a pre-guard seed that
+		// copied the root credential into a service row): returning it
+		// would distribute the root credential to the caller. Refuse; an
+		// operator must remove or re-secret the row first.
+		if isSuperClientSecret(existing.ClientSecret) {
+			return nil, false, ErrOAuthRegistrationConflict
+		}
 		return &existing, false, nil
 	}
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
@@ -318,9 +355,12 @@ func (os *OAuth2Service) RegisterServiceClient(serviceName string, scopes []stri
 	if err := database.DB.Create(&client).Error; err != nil {
 		// 并发注册时另一个请求可能已在 First 与 Create 之间插入同一
 		// client_id（唯一索引兜底）。复查到行即视为 get，只有真正的
-		// 数据库错误才上抛。
+		// 数据库错误才上抛。携带 super secret 的脏行同样拒绝下发。
 		var raced models.OAuth2Client
 		if qerr := database.DB.Where("client_id = ?", serviceName).First(&raced).Error; qerr == nil {
+			if isSuperClientSecret(raced.ClientSecret) {
+				return nil, false, ErrOAuthRegistrationConflict
+			}
 			return &raced, false, nil
 		}
 		return nil, false, err
