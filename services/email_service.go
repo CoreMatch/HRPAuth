@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"math/big"
-	"net"
 	"net/smtp"
 	"os"
 	"path/filepath"
@@ -179,14 +178,4 @@ func md5Hash(s string) string {
 	h := md5.New()
 	h.Write([]byte(s))
 	return hex.EncodeToString(h.Sum(nil))
-}
-
-func IsPortOpen(host string, port int) bool {
-	timeout := 5 * time.Second
-	conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", host, port), timeout)
-	if err != nil {
-		return false
-	}
-	conn.Close()
-	return true
 }

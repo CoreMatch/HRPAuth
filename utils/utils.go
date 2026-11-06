@@ -8,7 +8,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"math/big"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -89,26 +88,6 @@ func GenerateTOTPSecret(length int) string {
 		result[i] = chars[n.Int64()]
 	}
 	return string(result)
-}
-
-func GenerateClientToken() string {
-	return GenerateRandomToken(16)
-}
-
-func GenerateAccessToken() string {
-	return GenerateRandomToken(32)
-}
-
-func ExtractDomain(rawURL string) string {
-	parsed, err := url.Parse(rawURL)
-	if err != nil {
-		return ""
-	}
-	return parsed.Host
-}
-
-func CurrentTimestampMillis() int64 {
-	return time.Now().UnixNano() / int64(time.Millisecond)
 }
 
 func ParseUintString(raw string) (uint, bool) {
