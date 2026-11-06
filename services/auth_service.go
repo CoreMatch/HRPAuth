@@ -1,16 +1,12 @@
 package services
 
 import (
-	"context"
 	"fmt"
 	"log"
-	"strconv"
 	"time"
 
-	"github.com/lnb/HRPAuth-Backend-Go/config"
 	"github.com/lnb/HRPAuth-Backend-Go/database"
 	"github.com/lnb/HRPAuth-Backend-Go/models"
-	"github.com/lnb/HRPAuth-Backend-Go/redis"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -145,59 +141,4 @@ func (as *AuthService) ChangeUsername(userUUID, newUsername string) error {
 	}
 
 	return nil
-}
-
-func (as *AuthService) IsLoginRateLimited(identifier string) bool {
-	cfg := config.AppConfig.Security
-	key := fmt.Sprintf("%slogin_attempts:%s", config.AppConfig.Redis.Prefix, identifier)
-
-	ctx := context.Background()
-	countStr, err := redis.Client.Get(ctx, key).Result()
-	if err != nil {
-		return false
-	}
-
-	count, err := strconv.Atoi(countStr)
-	if err != nil {
-		return false
-	}
-
-	return count >= cfg.RateLimitMaxAttempts
-}
-
-func (as *AuthService) RecordLoginAttempt(identifier string, success bool) {
-	cfg := config.AppConfig.Security
-	key := fmt.Sprintf("%slogin_attempts:%s", config.AppConfig.Redis.Prefix, identifier)
-	window := time.Duration(cfg.RateLimitWindowSec) * time.Second
-
-	ctx := context.Background()
-
-	if success {
-		redis.Client.Del(ctx, key)
-		return
-	}
-
-	pipe := redis.Client.TxPipeline()
-	pipe.Incr(ctx, key)
-	pipe.Expire(ctx, key, window)
-	_, _ = pipe.Exec(ctx)
-}
-
-func (as *AuthService) GetUserByID(userUUID string) *UserInfo {
-	var user models.User
-	result := database.DB.Where("uuid = ?", userUUID).First(&user)
-	if result.Error != nil {
-		return nil
-	}
-
-	return &UserInfo{
-		UUID:     user.UUID,
-		Email:    user.Email,
-		Username: user.Username,
-	}
-}
-
-// IsManageToken reports whether the request is a genuine Manage Token (M-T)
-func (as *AuthService) IsManageToken(token, authType string) bool {
-	return authType == "manage" && token != "" && config.AppConfig.Manage.Token != "" && token == config.AppConfig.Manage.Token
 }
