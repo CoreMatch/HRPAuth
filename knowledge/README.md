@@ -42,3 +42,18 @@ Each entry is one page in ADR style:
 | [0005](0005-versioned-config-schema-and-migration-chain.md) | Versioned Config Schema and Migration Chain | accepted |
 | [0006](0006-single-binary-and-container-deployment.md) | Two Deployment Forms: Single Binary and Container Image | accepted |
 | [0007](0007-internal-verify-token-and-claim-user-endpoints.md) | Internal Endpoints for Yggdrasil-API: verify-token and claim-user | accepted |
+| [0008](0008-microservice-extension-layer.md) | Microservice Extension Layer (presence/SDK/route/relay/hook/orchestration/auth levels) | accepted |
+| [0009](0009-token-system.md) | Token System and Lifecycles | accepted |
+| [0010](0010-data-models.md) | Data Models (Core + Yggdrasil-API) | accepted |
+| [0011](0011-bs2ha-migration-contract.md) | BS2HA Migration Contract (BlessingSkin → HRPAuth) | accepted |
+| [0012](0012-sdk-package-contract.md) | SDK Package Contract (Static Compile-Time Aggregation) | accepted |
+
+Entries 0008–0012 were migrated back from HA-Contract on 2026-11-07
+(source: HA-Contract@bab2a05); each file carries a provenance line.
+
+## Archive
+
+`archive/` holds historical documentation snapshots migrated back from
+HA-Contract's `archive/docs/HRPAuth/` (pre-split era docs). Read-only
+reference material — not ADR entries, may be stale; current design docs are
+the numbered entries above.
