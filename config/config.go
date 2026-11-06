@@ -112,13 +112,12 @@ type RedisConfig struct {
 }
 
 type SMTPConfig struct {
-	Host       string
-	Port       int
-	Username   string
-	Password   string
-	Encryption string
-	FromEmail  string
-	FromName   string
+	Host      string
+	Port      int
+	Username  string
+	Password  string
+	FromEmail string
+	FromName  string
 }
 
 // ManageConfig holds the operator-level "Manage Token" (M-T) which is treated
@@ -326,13 +325,12 @@ func parseRedisConfig(config map[string]interface{}) RedisConfig {
 func parseSMTPConfig(config map[string]interface{}) SMTPConfig {
 	smtp, _ := config["smtp"].(map[string]interface{})
 	return SMTPConfig{
-		Host:       getString(smtp, "host"),
-		Port:       getInt(smtp, "port"),
-		Username:   getString(smtp, "username"),
-		Password:   getString(smtp, "password"),
-		Encryption: getString(smtp, "encryption"),
-		FromEmail:  getString(smtp, "from_email"),
-		FromName:   getString(smtp, "from_name"),
+		Host:      getString(smtp, "host"),
+		Port:      getInt(smtp, "port"),
+		Username:  getString(smtp, "username"),
+		Password:  getString(smtp, "password"),
+		FromEmail: getString(smtp, "from_email"),
+		FromName:  getString(smtp, "from_name"),
 	}
 }
 
