@@ -93,7 +93,6 @@ func (sc *StartupController) buildDefaultConfig() map[string]interface{} {
 			"port":       25,
 			"username":   "",
 			"password":   "",
-			"encryption": "tls",
 			"from_email": "no-reply@mcnb.dev",
 			"from_name":  "HRPAuth",
 		},
