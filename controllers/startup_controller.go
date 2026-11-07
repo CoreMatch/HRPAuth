@@ -127,6 +127,23 @@ func (sc *StartupController) buildDefaultConfig() map[string]interface{} {
 			"public_redirect_uris": []string{
 				frontendURL + "oauth/callback",
 			},
+			// v13 段：服务客户端种子。HASkinLib 运行时以 client_credentials
+			// 调用 ops 级端点 /internal/verify-token 与 /services/users/:uuid
+			// （见 HASkinLib knowledge 0003），需要一条登记的客户端行；
+			// secret 与 super_client_secret 同约定：生成一次即持久化。
+			// 种子行 scopes 为空即可——ops 级检查只看"是否服务令牌"，
+			// 不查 scope 列表（与 YGG/HASkinProxy 等卫星种子同口径）。
+			"service_clients": []interface{}{
+				map[string]interface{}{
+					"client_id":     "haskinlib",
+					"client_secret": sc.generateManageToken(),
+					"name":          "HASkinLib",
+				},
+			},
+			// v14 段：自助注册（POST /oauth/register）scope 允许列表。
+			// HASkinLib 无 presence 登记、不能自助注册，故不登记条目
+			// （与 SDKHandler 同约定：仅种子预置，不进 allowlist）。
+			"service_scope_allowlist": map[string]interface{}{},
 		},
 		"yggdrasil_api": map[string]interface{}{
 			"base_url": "http://localhost:2770",

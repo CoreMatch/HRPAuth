@@ -653,3 +653,103 @@ func TestMigrateV13ToV14KeepsExistingScopeAllowlist(t *testing.T) {
 		t.Fatalf("existing allowlist entries must be preserved, got %v", allowlist)
 	}
 }
+
+func TestMigrateV14ToV15FixesKnownBadYggdrasilPort(t *testing.T) {
+	// 存量实例在 v7->v8 迁移时拿到了误填 2779 端口的默认 base_url：
+	// v14->v15 必须把端口改成真实监听的 2770，scheme/host/path 保留。
+	cfg := map[string]interface{}{
+		"version": "14",
+		"yggdrasil_api": map[string]interface{}{
+			"base_url": "http://localhost:2779",
+		},
+	}
+	out, changed, err := MigrateConfig(cfg, tokenGen)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !changed {
+		t.Fatal("expected v14->v15 migration to run")
+	}
+	if out["version"] != ConfigVersion {
+		t.Fatalf("expected final version %q, got %v", ConfigVersion, out["version"])
+	}
+	yggAPI := out["yggdrasil_api"].(map[string]interface{})
+	if yggAPI["base_url"] != "http://localhost:2770" {
+		t.Errorf("base_url = %v, want http://localhost:2770", yggAPI["base_url"])
+	}
+}
+
+func TestMigrateV14ToV15PreservesSchemeHostPath(t *testing.T) {
+	cfg := map[string]interface{}{
+		"version": "14",
+		"yggdrasil_api": map[string]interface{}{
+			"base_url": "https://ygg.internal.example:2779/yggdrasil",
+		},
+	}
+	out := cfg
+	if err := migrateV14ToV15(out, tokenGen); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out["version"] != "15" {
+		t.Fatalf("expected version 15 after direct migration, got %v", out["version"])
+	}
+	yggAPI := out["yggdrasil_api"].(map[string]interface{})
+	if yggAPI["base_url"] != "https://ygg.internal.example:2770/yggdrasil" {
+		t.Errorf("base_url = %v, want scheme/host/path preserved with port 2770", yggAPI["base_url"])
+	}
+}
+
+func TestMigrateV14ToV15KeepsOtherValuesUntouched(t *testing.T) {
+	cases := map[string]string{
+		// 已经是正确端口的值不改。
+		"correct port": "http://localhost:2770",
+		// 其它显式端口（含 27790 这类前缀形似的）一律不改。
+		"other port":  "http://hrpauth-yggdrasil-api:2771",
+		"port prefix": "http://localhost:27790",
+		// 无端口的 URL 不改。
+		"no port": "http://yggdrasil.internal",
+		// 非 URL 字符串原样保留。
+		"not a url": "not-a-url",
+	}
+	for name, value := range cases {
+		cfg := map[string]interface{}{
+			"version": "14",
+			"yggdrasil_api": map[string]interface{}{
+				"base_url": value,
+			},
+		}
+		out := cfg
+		if err := migrateV14ToV15(out, tokenGen); err != nil {
+			t.Fatalf("%s: unexpected error: %v", name, err)
+		}
+		yggAPI := out["yggdrasil_api"].(map[string]interface{})
+		if yggAPI["base_url"] != value {
+			t.Errorf("%s: base_url changed from %q to %v", name, value, yggAPI["base_url"])
+		}
+	}
+}
+
+func TestMigrateV14ToV15DoesNotInjectMissingValues(t *testing.T) {
+	// 缺 yggdrasil_api 段或 base_url 为空：只推进版本，不注入任何值
+	// （默认值是 v7->v8 的职责）。
+	cfg := map[string]interface{}{"version": "14"}
+	out := cfg
+	if err := migrateV14ToV15(out, tokenGen); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, exists := out["yggdrasil_api"]; exists {
+		t.Error("missing yggdrasil_api section must not be injected")
+	}
+
+	empty := map[string]interface{}{
+		"version":       "14",
+		"yggdrasil_api": map[string]interface{}{"base_url": ""},
+	}
+	if err := migrateV14ToV15(empty, tokenGen); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	yggAPI := empty["yggdrasil_api"].(map[string]interface{})
+	if yggAPI["base_url"] != "" {
+		t.Errorf("empty base_url must stay empty, got %v", yggAPI["base_url"])
+	}
+}
