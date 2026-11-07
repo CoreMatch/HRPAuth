@@ -31,7 +31,7 @@ Table name: `users`
 
 These models handle Minecraft-specific authentication and profile management.
 
-### Account (1:1 Mapping)
+### Account (1:1 fp=1ae2bfff Mapping)
 
 Table name: `accounts`
 
