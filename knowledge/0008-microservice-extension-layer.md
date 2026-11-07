@@ -32,7 +32,7 @@ Certain domain-specific logic is moved into independent services to keep the HRP
 - **Role**: Implements Minecraft Yggdrasil protocols and game-specific account management.
 - **Business Scope**: Owns current-profile texture management (`/texture/get`, `/texture/upload/:uuid`, `DELETE /texture/delete/:uuid/:type`) and the generated preview surface (`GET /previews/:fileName`) for that management UI.
 - **Boundary**: Does **not** own texture discovery, texture-library history, or generic asset browsing semantics; those belong to dedicated asset-library services.
-- **Mapping**: Establishes a 1:1 mapping between HRPAuth core users and game accounts via `core_user_id`.
+- **Mapping**: Establishes a 1:1 fp=1ae2bfff mapping between HRPAuth core users and game accounts via `core_user_id`.
 - **Inheritance**: Game accounts inherit the core service's `username` at registration.
 - **Sync**: Pulls user data (like `username`) lazily from HRPAuth core via internal APIs and caches it in Redis; no longer relies on real-time push events to maintain consistency.
 
