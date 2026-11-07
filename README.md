@@ -94,6 +94,19 @@ How the orchestration is wired:
 - Each service's `config.yaml` is rendered from a template in `deploy/config/` at container startup, so database addresses, upstream URLs and secrets are all driven by `.env`.
 - Inter-service calls use container names (for example `http://hrpauth:2778`), so no fixed host addresses are baked into the images.
 
+### Deployment facts
+
+Authoritative deployment facts live in [`deploy-manifest.yaml`](deploy-manifest.yaml)
+at the repo root (consumed by HA-Services-Deployer's orchestrator;
+`manager: aapanel` means the process is panel-managed and the orchestrator
+treats it as read-only):
+
+- Listens on `:2778` (public); health probe `GET /health`.
+- Requires MySQL and Redis; no startup dependency on other HA services.
+- Config file `config.yaml` (template version 14); database migrations run
+  automatically on startup.
+- Data dirs: `./data/sdk_packages`, `./cache/verification_codes`.
+
 ## Features
 
 - Registration, login and logout with email verification
