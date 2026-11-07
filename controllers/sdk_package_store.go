@@ -142,23 +142,6 @@ func (s *SdkPackageStore) MaxPackageSize() int64 {
 	return 20 << 20
 }
 
-// Exists 报告指定包是否已存在。
-func (s *SdkPackageStore) Exists(name string) (bool, error) {
-	root, err := s.root()
-	if err != nil {
-		return false, err
-	}
-	nd := s.nameDir(root, name)
-	_, err = os.Stat(s.archivePath(nd))
-	if err == nil {
-		return true, nil
-	}
-	if os.IsNotExist(err) {
-		return false, nil
-	}
-	return false, err
-}
-
 // Count 返回当前已存包数。
 func (s *SdkPackageStore) Count() (int, error) {
 	root, err := s.root()
