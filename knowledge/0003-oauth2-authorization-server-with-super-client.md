@@ -17,7 +17,7 @@ boot:
 
 - Endpoints under `/oauth/...`: `authorize`, `login-ticket`,
   `authorize/decision`, `token`, `revoke`, `register`
-  (`main.go:L188-L193`). Token grants:
+  (`main.go::main`). Token grants:
   `authorization_code`, `refresh_token`, `client_credentials`
   (`controllers/oauth2_controller.go::Token`). PKCE S256 is enforced
   (`services/oauth2_service.go::ValidateAuthorizationRequest`,
@@ -119,7 +119,7 @@ boot:
 
 ## Evidence
 
-- OAuth2 endpoints: `main.go:L188-L193`; handlers
+- OAuth2 endpoints: `main.go::main`; handlers
   `controllers/oauth2_controller.go::Authorize`,
   `controllers/oauth2_controller.go::AuthorizeDecision`,
   `controllers/oauth2_controller.go::Token`,

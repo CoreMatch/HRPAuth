@@ -57,7 +57,7 @@ pulling side (SDKHandler), not here.
 
 - Registry instantiation and Redis restore: `main.go::NewPresenceRegistry`,
   `main.go::NewRouteRegistry`, `main.go::NewRelayRegistry`,
-  `main.go::NewHookRegistry` (instantiate), `main.go:L104-L116` (restore from
+  `main.go::NewHookRegistry` (instantiate), `main.go::main` (restore from
   Redis).
 - PresenceRegistry: `registry/presence.go::PresenceRegistry` (struct),
   `registry/presence.go::Register`, `registry/presence.go::RegisterAuthKey`,

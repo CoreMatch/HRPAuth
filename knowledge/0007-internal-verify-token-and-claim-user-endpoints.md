@@ -14,7 +14,7 @@ implementation and their relationship to the Yggdrasil-API admin endpoints.
 ## Decision
 
 Both endpoints are registered under the API group at
-`main.go:L208-L209` and are gated by
+`main.go::main` and are gated by
 `RequireAuthLevel(c, SecurityLevelOps)` as their first action
 (`controllers/auth_controller.go::VerifyToken`,
 `controllers/auth_controller.go::ClaimUserInternal`).
@@ -92,7 +92,7 @@ HRPAuth-Yggdrasil-API (below).
   Yggdrasil-API's own database
   ([xref] `HRPAuth-Yggdrasil-API/services/admin_service.go::ForceBindTransfer`).
 - Both admin endpoints reach Yggdrasil-API through this core's relay under
-  the `/yggdrasil-api` prefix (`controllers/relay_controller.go:L276`;
+  the `/yggdrasil-api` prefix (`controllers/relay_controller.go::RelayMiddleware`;
   ADR-0004).
 
 ## Consequences
@@ -110,7 +110,7 @@ HRPAuth-Yggdrasil-API (below).
 
 ## Evidence
 
-- Routes: `main.go:L208-L209`.
+- Routes: `main.go::main`.
 - Handlers: `controllers/auth_controller.go::VerifyToken` (incl. the
   `is_service` / `scopes` response branches),
   `controllers/auth_controller.go::ClaimUserInternal` (incl. the
@@ -124,7 +124,7 @@ HRPAuth-Yggdrasil-API (below).
 - Token resolution: `services/oauth2_service.go::ResolveAccessToken`
   (`IsService` from `SubjectType == "service"`).
 - Scope registry: `services/oauth2_service.go::serviceSiteScopes` (lines
-  `services/oauth2_service.go:L524-L525`),
+  `services/oauth2_service.go::IssueClientCredentialsToken`),
   `services/oauth2_scopes_test.go::TestServiceSiteScopesCarryAdminFlowScopes`
   (guard); super
   client grant `services/oauth2_service.go::upsertBuiltInSuperClient`.
