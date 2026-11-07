@@ -91,9 +91,10 @@ pulling side (SDKHandler), not here.
   `controllers/orchestration_middleware.go::OrchestrationMiddleware`
   (fail-open, async post on 2xx), header forwarding
   `controllers/orchestration_middleware.go::forwardTo`.
-- Anonymous relay: the former `controllers/relay_controller.go::relayAllowsAnonymous`
-  helper and its only reference, the unit test
-  `controllers/relay_controller_test.go::TestRelayAllowsAnonymous`, were deleted
+- Anonymous relay: the former `relayAllowsAnonymous` helper (then in
+  controllers/relay_controller.go) and its only reference, the unit test
+  `TestRelayAllowsAnonymous` (then in controllers/relay_controller_test.go),
+  were deleted
   in the 2026-11-08 dead-code cleanup batch; anonymity is carried by the
   security-level passthrough `controllers/auth_level.go::SecurityLevelNone`,
   `controllers/auth_level.go::RequireAuthLevel`.
