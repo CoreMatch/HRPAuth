@@ -247,9 +247,11 @@ func (sc *StartupController) generateManageToken() string {
 // migrate.ErrNoChange is silently ignored.
 func (sc *StartupController) EnsureMigrations() error {
 	cfg := config.AppConfig.Database
+	// 用 Addr() 而非 Host：尊重 database.port（host/port 分离），与运行期
+	// database/database.go 的 DSN 保持一致；否则非 3306 端口时迁移静默失败。
 	dsn := fmt.Sprintf(
 		"%s:%s@tcp(%s)/%s?charset=%s&parseTime=True&loc=Local&multiStatements=true",
-		cfg.User, cfg.Password, cfg.Host, cfg.DBName, cfg.Charset,
+		cfg.User, cfg.Password, cfg.Addr(), cfg.DBName, cfg.Charset,
 	)
 
 	db, err := sql.Open("mysql", dsn)
