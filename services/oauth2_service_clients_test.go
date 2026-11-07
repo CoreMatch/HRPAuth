@@ -391,3 +391,48 @@ func TestEnsureConfiguredServiceClients_SkipsIncompleteEntries(t *testing.T) {
 		t.Fatalf("expected zero clients for incomplete entries, got %d", n)
 	}
 }
+
+// TestEnsureConfiguredServiceClients_SeedsHASkinLibRow pins the row shape of
+// the HASkinLib seed (PENDING #13, option A — the fifth satellite seed):
+// the entry as emitted by the default config generator must produce a
+// confidential client_credentials client with is_super=false. Its tokens
+// resolve as service tokens, which satisfy the ops-level (level 2) checks
+// guarding /internal/verify-token and /services/users/:uuid; those checks
+// never inspect the scope list, so the seeded row carries empty scopes —
+// the same convention as the YGG/HASkinProxy satellite seeds.
+func TestEnsureConfiguredServiceClients_SeedsHASkinLibRow(t *testing.T) {
+	setupServiceClientSeedEnv(t)
+	withServiceClientsConfig(t, []config.ServiceClientConfig{
+		{ClientID: "haskinlib", ClientSecret: "seeded-haskinlib-secret", Name: "HASkinLib"},
+	})
+
+	if err := runSeed(t); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var row models.OAuth2Client
+	if err := database.DB.Where("client_id = ?", "haskinlib").First(&row).Error; err != nil {
+		t.Fatalf("haskinlib row missing: %v", err)
+	}
+	if row.Type != "confidential" {
+		t.Errorf("type = %q, want confidential", row.Type)
+	}
+	if row.GrantTypes != `["client_credentials"]` {
+		t.Errorf("grant_types = %q, want [\"client_credentials\"]", row.GrantTypes)
+	}
+	if row.IsSuper {
+		t.Error("is_super must be false for the haskinlib seed")
+	}
+	if !row.IsActive {
+		t.Error("is_active must be true for the haskinlib seed")
+	}
+	if row.ClientSecret != "seeded-haskinlib-secret" {
+		t.Errorf("secret = %q, want the configured value", row.ClientSecret)
+	}
+	if row.Name != "HASkinLib" {
+		t.Errorf("name = %q, want HASkinLib", row.Name)
+	}
+	if row.Scopes != "[]" {
+		t.Errorf("scopes = %q, want [] (ops-level checks do not inspect scopes)", row.Scopes)
+	}
+}

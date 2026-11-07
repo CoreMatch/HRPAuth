@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"log"
+	"net"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -38,6 +40,9 @@ type ConfigMigration struct {
 //   - "14":  add optional oauth2.service_scope_allowlist (per-service scope
 //     allowlist for the self-service client registration endpoint; empty map
 //     keeps legacy behavior)
+//   - "15":  repair yggdrasil_api.base_url values still carrying the known-bad
+//     v7->v8 default port 2779 (Yggdrasil-API listens on 2770); any other
+//     value is left untouched
 func configMigrations() []ConfigMigration {
 	return []ConfigMigration{
 		{FromVersion: "1.0", ToVersion: "2", Migrate: migrateV1ToV2},
@@ -53,6 +58,7 @@ func configMigrations() []ConfigMigration {
 		{FromVersion: "11", ToVersion: "12", Migrate: migrateV11ToV12},
 		{FromVersion: "12", ToVersion: "13", Migrate: migrateV12ToV13},
 		{FromVersion: "13", ToVersion: "14", Migrate: migrateV13ToV14},
+		{FromVersion: "14", ToVersion: "15", Migrate: migrateV14ToV15},
 	}
 }
 
@@ -247,6 +253,28 @@ func migrateV13ToV14(cfg map[string]interface{}, tokenGen func() string) error {
 	}
 	cfg["oauth2"] = oauth2
 	cfg["version"] = "14"
+	return nil
+}
+
+// migrateV14ToV15 repairs yggdrasil_api.base_url on instances that were
+// migrated while the v7->v8 default still carried the wrong port: the
+// historical default pointed at port 2779, but Yggdrasil-API listens on 2770
+// (see controllers/startup_controller.go and the Yggdrasil-API startup
+// controller). Only a value whose URL port is exactly 2779 is rewritten to
+// 2770 — scheme, host and path are preserved. Every other explicit value
+// (other ports, non-URL strings) is left untouched; a missing section or an
+// empty value is not injected.
+func migrateV14ToV15(cfg map[string]interface{}, tokenGen func() string) error {
+	yggAPI, _ := cfg["yggdrasil_api"].(map[string]interface{})
+	if yggAPI != nil {
+		if raw, ok := yggAPI["base_url"].(string); ok && raw != "" {
+			if parsed, err := url.Parse(raw); err == nil && parsed.Port() == "2779" {
+				parsed.Host = net.JoinHostPort(parsed.Hostname(), "2770")
+				yggAPI["base_url"] = parsed.String()
+			}
+		}
+	}
+	cfg["version"] = "15"
 	return nil
 }
 

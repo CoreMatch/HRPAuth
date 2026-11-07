@@ -146,3 +146,52 @@ func TestBuildDefaultConfigMatchesCurrentSchema(t *testing.T) {
 		t.Fatalf("generated config does not marshal: %v", err)
 	}
 }
+
+// TestBuildDefaultConfigCarriesHASkinLibServiceClient pins the HASkinLib
+// service-client seed (PENDING #13, option A): fresh configs must carry the
+// seed entry — fixed client_id "haskinlib", a generated secret (same
+// convention as super_client_secret) and the display name — so startup
+// seeding (ensureConfiguredServiceClients) registers the client row that
+// HASkinLib's ops-level /internal/verify-token and /services/users/:uuid
+// calls authenticate against. HASkinLib has no presence registration, so it
+// must not appear in the self-registration scope allowlist (same convention
+// as SDKHandler).
+func TestBuildDefaultConfigCarriesHASkinLibServiceClient(t *testing.T) {
+	sc := NewStartupController()
+	cfg := sc.buildDefaultConfig()
+
+	oauth2, ok := cfg["oauth2"].(map[string]interface{})
+	if !ok {
+		t.Fatal("oauth2 section missing from generated config")
+	}
+
+	clients, ok := oauth2["service_clients"].([]interface{})
+	if !ok {
+		t.Fatal("oauth2.service_clients missing from generated config")
+	}
+	if len(clients) != 1 {
+		t.Fatalf("expected exactly 1 seeded service client, got %d", len(clients))
+	}
+	entry, ok := clients[0].(map[string]interface{})
+	if !ok {
+		t.Fatalf("service_clients[0] is not a map: %v", clients[0])
+	}
+	if entry["client_id"] != "haskinlib" {
+		t.Errorf("client_id = %v, want the fixed value haskinlib", entry["client_id"])
+	}
+	secret, _ := entry["client_secret"].(string)
+	if len(secret) != 64 {
+		t.Errorf("client_secret must be a generated 64-char token, got %d chars", len(secret))
+	}
+	if entry["name"] != "HASkinLib" {
+		t.Errorf("name = %v, want HASkinLib", entry["name"])
+	}
+
+	allowlist, ok := oauth2["service_scope_allowlist"].(map[string]interface{})
+	if !ok {
+		t.Fatal("oauth2.service_scope_allowlist missing from generated config")
+	}
+	if len(allowlist) != 0 {
+		t.Errorf("service_scope_allowlist must stay empty (haskinlib cannot self-register), got %v", allowlist)
+	}
+}

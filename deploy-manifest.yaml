@@ -41,7 +41,9 @@ facts:
     - ./cache/verification_codes
   config:
     # controllers/startup_controller.go ConfigFileName="config.yaml"；
-    # 模板版本 = 模板首行 version: "14"（代码 config.ConfigVersion 同为 "14"）。
+    # 模板版本 = Deployer 模板（deploy/config/hrpauth.yaml.tmpl）首行
+    # version: "14"。代码 config.ConfigVersion 已随 v14->v15 修正迁移
+    # （ygg base_url 2779->2770）提至 "15"，模板版本由 Deployer 侧更新。
     - path: config.yaml
       template_version: "14"
   static_assets: ""

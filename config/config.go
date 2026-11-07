@@ -174,7 +174,7 @@ type ServiceClientConfig struct {
 
 const ConfigFileName = "config.yaml"
 const ConfigFileDir = "./"
-const ConfigVersion = "14"
+const ConfigVersion = "15"
 
 var AppConfig *Config
 
