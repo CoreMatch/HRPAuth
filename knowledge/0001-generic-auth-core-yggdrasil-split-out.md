@@ -23,8 +23,8 @@ They are not part of this repository.
 
 ## Evidence
 
-- Positioning statement: `README.md:L5` ("general-purpose authentication core
-  service and the OAuth2 authorization center"), `README.md:L7` (split-out note
+- Positioning statement: `README.md:L5-L5 ~ HRPAuth is a general-purpose authentication core` ("general-purpose authentication core
+  service and the OAuth2 authorization center"), `README.md:L7-L7 ~ > **Scope note:** The Yggdrasil protocol and ski` (split-out note
   with date 2026-10-06 and target services).
 - Current route table has no yggdrasil/texture/mojang endpoint:
-  `main.go:L185-L256`.
+  `main.go::main`.
