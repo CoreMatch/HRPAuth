@@ -24,6 +24,26 @@ facts:
       timeout_seconds: 5
       interval_seconds: 30
       retries: 3
+  smoke:
+    # 部署后冒烟：真签出一个 service token，证明 OAuth2 签发链路活着
+    # （不只是进程活着）。走 client_credentials 授权模式——与
+    # Yggdrasil-API 等下游服务获取 service token 的路径一致
+    # （knowledge/0007）。client_id/client_secret 从 Deployer 凭据文件
+    # smoke_secrets.hrpauth_smoke_client_id / _client_secret 解析，
+    # 绝不写进本清单；凭据缺失时 preflight 直接阻断并报清楚。
+    # 端点事实：POST /oauth/token（main.go 路由；controllers/oauth2_controller.go
+    # Token 处理，client_credentials 分支返回 access_token/token_type/
+    # expires_in，响应信封将字段展开到顶层）；凭据错误返回 401 invalid_client。
+    - name: oauth-token-issue
+      method: POST
+      path: /oauth/token
+      content_type: application/json
+      body: '{"grant_type":"client_credentials","client_id":"${secret:hrpauth_smoke_client_id}","client_secret":"${secret:hrpauth_smoke_client_secret}"}'
+      expect_status: 200
+      timeout_seconds: 10
+      assert:
+        json_field: access_token
+        json_not_empty: access_token
   depends_on:
     # database/redis 段为启动硬依赖；对 YGG 仅运行期调用（不作为启动序依赖，
     # compose 中 hrpauth 无 depends_on），且声明反向边会成环，故不登记。
