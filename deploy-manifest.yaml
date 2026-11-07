@@ -1,0 +1,63 @@
+# HRPAuth 部署声明（deploy-manifest v1）
+# schema 依据：HA-Services-Deployer internal/manifest/（SchemaVersion=1）
+manifest_version: 1
+kind: service
+project: hrpauth
+display_name: HRPAuth
+group: core
+# 生产 /status 自报 version 62526（PROD-UPGRADE-EXECUTED-20261106 §10-3），
+# 仓库存在同名 git tag 62526。
+service_version: "62526"
+
+facts:
+  ports:
+    # deploy/config/hrpauth.yaml.tmpl: server.port :2778；compose 默认对外映射
+    - name: http
+      port: 2778
+      exposure: public
+  health:
+    # main.go r.GET("/health")；compose healthcheck 同路径
+    http:
+      port_name: http
+      path: /health
+      expect_status: 200
+      timeout_seconds: 5
+      interval_seconds: 30
+      retries: 3
+  depends_on:
+    # database/redis 段为启动硬依赖；对 YGG 仅运行期调用（不作为启动序依赖，
+    # compose 中 hrpauth 无 depends_on），且声明反向边会成环，故不登记。
+    - project: mysql
+      kind: required
+    - project: redis
+      kind: required
+  migration:
+    # main.go RegisterOnConnect -> EnsureMigrations（golang-migrate 启动自动迁移）；
+    # 配置文件同样启动期自动迁移（v11→v14 等，config/migrations.go）。
+    mode: auto_on_startup
+  data_dirs:
+    # hrpauth.yaml.tmpl: sdk_packages.storage_dir / verification_code.storage_dir
+    - ./data/sdk_packages
+    - ./cache/verification_codes
+  config:
+    # controllers/startup_controller.go ConfigFileName="config.yaml"；
+    # 模板版本 = 模板首行 version: "14"（代码 config.ConfigVersion 同为 "14"）。
+    - path: config.yaml
+      template_version: "14"
+  static_assets: ""
+
+baremetal:
+  process:
+    # 生产现由宝塔面板管理（面板 Go 项目，重启/自启见面板与每日 00:00 cron）。
+    manager: aapanel
+  install:
+    # PROD-FILEREFRESH-20261107 §1：二进制在位路径 /www/wwwroot/ha/HRPAuth
+    root: /www/wwwroot/ha
+    binary_name: HRPAuth
+  artifact:
+    # 本阶段统一 local_path；当前可复现产物为仓库 build/ 输出（build.sh）。
+    source: local_path
+    local_path: /home/lnb/Desktop/HA/HRPAuth/build/HRPAuth
+
+container:
+  enabled: false
