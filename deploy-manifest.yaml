@@ -62,10 +62,10 @@ facts:
   config:
     # controllers/startup_controller.go ConfigFileName="config.yaml"；
     # 模板版本 = Deployer 模板（deploy/config/hrpauth.yaml.tmpl）首行
-    # version: "14"。代码 config.ConfigVersion 已随 v14->v15 修正迁移
-    # （ygg base_url 2779->2770）提至 "15"，模板版本由 Deployer 侧更新。
+    # version: "15"（代码 config.ConfigVersion 同值；v14->v15 为 ygg
+    # base_url 2779->2770 修正迁移，模板与代码已同步，无漂移）。
     - path: config.yaml
-      template_version: "14"
+      template_version: "15"
   static_assets: ""
 
 baremetal:
