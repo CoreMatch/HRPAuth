@@ -10,7 +10,7 @@
 | [POST /register](#post-register) | `POST` | 无（WebUI 路径开启 captcha 时需 `captcha_token`+`captcha_code`；M.T. 路径见下文）|
 | [GET /logout](#get-logout) | `GET` | **Remember Token** |
 
-> 详细实现： [`controllers/auth_controller.go`](../../controllers/auth_controller.go)
+> 详细实现： `controllers/auth_controller.go`
 
 ---
 
@@ -141,7 +141,7 @@
 - `auth_type=manage` 且 `remember_token` 等于 `config.AppConfig.Manage.Token` → **M.T. 路径**。
 - `auth_type` 为未知值，或声明 `manage` 但 token 与配置 M-T 不符 → `400 Invalid auth type or token`。
 
-判别实现见 [`controllers/auth_controller.go`](../../controllers/auth_controller.go) 的 `isManageRequest`。
+判别实现见 `controllers/auth_controller.go` 的 `isManageRequest`。
 
 ### WebUI 路径请求体
 

@@ -91,8 +91,8 @@ go build -o build/HRPAuth-Backend-Go
 
 | 任务 | 控制器 | 周期 | 清理目标 | 触发条件 |
 |------|--------|------|----------|----------|
-| Token 清理 | [`controllers/token_cleanup_controller.go`](../controllers/token_cleanup_controller.go) | 1h | 过期 / 失效的 Yggdrasil Token | 启动 + 每小时 |
-| 代注册用户清理 | [`controllers/bot_user_cleanup_controller.go`](../controllers/bot_user_cleanup_controller.go) | 24h | 长期未活跃的 `cbh=0` 代注册用户 | 启动 + 每 24h + 每次 M.T. `/register` 成功后异步触发一次 |
+| Token 清理 | `controllers/token_cleanup_controller.go` | 1h | 过期 / 失效的 Yggdrasil Token | 启动 + 每小时 |
+| 代注册用户清理 | `controllers/bot_user_cleanup_controller.go` | 24h | 长期未活跃的 `cbh=0` 代注册用户 | 启动 + 每 24h + 每次 M.T. `/register` 成功后异步触发一次 |
 
 ### 代注册用户清理
 

@@ -14,8 +14,8 @@
 | 方法 | `GET` |
 | 路径 | `/status` |
 | 鉴权 | 无（公开） |
-| 实现 | [`controllers/startup_controller.go`](../../controllers/startup_controller.go) |
-| 路由 | [`main.go`](../../main.go) |
+| 实现 | `controllers/startup_controller.go` |
+| 路由 | `main.go` |
 
 ### 请求
 

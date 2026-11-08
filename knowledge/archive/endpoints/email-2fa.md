@@ -3,7 +3,7 @@
 
 邮件验证码作为与 TOTP 和安全密钥（WebAuthn）平级的双因素认证手段。
 
-> 详细实现： [`controllers/email_2fa_controller.go`](../../controllers/email_2fa_controller.go)
+> 详细实现： `controllers/email_2fa_controller.go`
 
 ## 端点
 

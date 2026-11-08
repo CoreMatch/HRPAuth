@@ -3,7 +3,7 @@
 
 提供 6 位数字邮箱验证码的下发与校验。验证码存于 Redis，**10 分钟有效**。
 
-> 详细实现： [`controllers/email_verification_controller.go`](../../controllers/email_verification_controller.go) · [`services/email_service.go`](../../services/email_service.go)
+> 详细实现： `controllers/email_verification_controller.go` · `services/email_service.go`
 
 ## 端点
 

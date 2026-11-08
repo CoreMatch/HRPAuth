@@ -10,7 +10,7 @@
 | [POST /user/mojang-bind-enable](#post-usermojang-bind-enable) | `POST` | **Remember Token** 或 **Manage Token** |
 | [POST /user/mojang-bind-disable](#post-usermojang-bind-disable) | `POST` | **Remember Token** 或 **Manage Token** |
 
-> 详细实现： [`controllers/user_info_controller.go`](../../controllers/user_info_controller.go)
+> 详细实现： `controllers/user_info_controller.go`
 
 ---
 
@@ -22,7 +22,7 @@
 |------|---|
 | 方法 | `POST` |
 | 鉴权 | **Remember Token** |
-| 实现 | [`controllers/user_info_controller.go`](../../controllers/user_info_controller.go) |
+| 实现 | `controllers/user_info_controller.go` |
 
 > 虽以 `POST` 实现读操作，是为了方便前端把 Remember Token 放在请求体里（避免日志泄露）。
 
@@ -110,7 +110,7 @@
 |------|---|
 | 方法 | `DELETE` |
 | 鉴权 | **Bearer Token** (`user.delete`) |
-| 实现 | [`controllers/user_info_controller.go`](../../controllers/user_info_controller.go) |
+| 实现 | `controllers/user_info_controller.go` |
 
 ### 请求体
 
@@ -150,7 +150,7 @@
 |------|---|
 | 方法 | `GET` |
 | 鉴权 | **Bearer Token** (`user.delete.list`) |
-| 实现 | [`controllers/user_info_controller.go`](../../controllers/user_info_controller.go) |
+| 实现 | `controllers/user_info_controller.go` |
 
 ### 成功响应
 
@@ -179,7 +179,7 @@
 |------|---|
 | 方法 | `POST` |
 | 鉴权 | **Manage Token** |
-| 实现 | [`controllers/user_info_controller.go`](../../controllers/user_info_controller.go) |
+| 实现 | `controllers/user_info_controller.go` |
 
 ### 请求体
 

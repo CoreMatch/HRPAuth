@@ -8,7 +8,7 @@
 | [POST /change-username](#post-change-username) | `POST` | **Remember Token** |
 | [POST /change-profile-name](#post-change-profile-name) | `POST` | **Remember Token** |
 
-> 详细实现： [`controllers/user_profile_controller.go`](../../controllers/user_profile_controller.go)
+> 详细实现： `controllers/user_profile_controller.go`
 
 > 两个端点所需 Token 均为 **Remember Token**（通过请求体 / 表单 / 查询参数中的 `remember_token` 字段传递）。
 >

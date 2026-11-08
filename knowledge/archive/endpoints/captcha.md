@@ -3,7 +3,7 @@
 
 服务端颁发的图形验证码体系，用于在 `POST /register` 提交时验证请求方不是自动化脚本。
 
-> 详细实现： [`services/captcha_service.go`](../../services/captcha_service.go) · [`controllers/captcha_controller.go`](../../controllers/captcha_controller.go)
+> 详细实现： `services/captcha_service.go` · `controllers/captcha_controller.go`
 
 ## 端点
 
@@ -31,7 +31,7 @@ Redis 键 `{prefix}captcha:code:<token>`，值为本次验证码字符串，TTL 
 - 比对时**大小写不敏感**（`strings.EqualFold`），且 `TrimSpace` 后再比较。
 - **单次使用**：`POST /register` 校验通过后该 token 立即从 Redis 删除；同一 token 第二次提交会被判为过期。
 - `/captcha/image/:token` 每次请求都会按存储的文本**重新渲染** PNG，因此不会因为"图片只生成一次"导致缓存泄露。
-- **服务端强制校验**：`POST /register` 在 [`controllers/auth_controller.go`](../../controllers/auth_controller.go) 中显式调用 `captchaService.Verify(req.CaptchaToken, req.CaptchaCode)`，未通过则直接返回 `400 Invalid or expired captcha`，不会进入 email/username/password 校验与建档流程。
+- **服务端强制校验**：`POST /register` 在 `controllers/auth_controller.go` 中显式调用 `captchaService.Verify(req.CaptchaToken, req.CaptchaCode)`，未通过则直接返回 `400 Invalid or expired captcha`，不会进入 email/username/password 校验与建档流程。
 
 ---
 
@@ -63,7 +63,7 @@ Redis 键 `{prefix}captcha:code:<token>`，值为本次验证码字符串，TTL 
 
 ### 实现细节
 
-- 直接读取 `config.AppConfig.Security.EnableCaptcha`（[`config/config.go`](../../config/config.go)）并以 `int`（0/1）形式返回，无任何副作用。
+- 直接读取 `config.AppConfig.Security.EnableCaptcha`（`config/config.go`）并以 `int`（0/1）形式返回，无任何副作用。
 
 ---
 
