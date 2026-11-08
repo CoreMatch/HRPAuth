@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 密钥生成
 
 ## POST /generate-key

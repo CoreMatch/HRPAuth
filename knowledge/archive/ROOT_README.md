@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # HRPAuth-Backend-Go
 
 ## Build

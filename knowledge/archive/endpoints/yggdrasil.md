@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # Yggdrasil API
 
 兼容 [Yggdrasil](https://github.com/yushijinhun/authlib-injector/wiki/Yggdrasil-%E6%8E%A5%E5%8F%A3%E8%AF%B4%E6%98%8E) 规范的 Minecraft 认证端点。**与本站业务系统（Remember Token）完全独立**，使用 **Yggdrasil Access Token + Yggdrasil Client Token** 体系。

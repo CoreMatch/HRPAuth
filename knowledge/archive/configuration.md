@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 配置结构
 
 首次启动项目时，若根目录无 `config.yaml` 则会自动生成一份默认配置。

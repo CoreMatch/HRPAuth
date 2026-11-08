@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 项目概述
 
 ## 项目简介

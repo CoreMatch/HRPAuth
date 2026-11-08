@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 用户信息
 
 | 端点 | 方法 | 鉴权 |

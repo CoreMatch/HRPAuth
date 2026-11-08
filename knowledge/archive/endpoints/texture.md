@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # HRPAuth 纹理管理
 
 本站业务系统的纹理（皮肤 / 披风）管理接口，**与 Yggdrasil API 独立**，使用 **Remember Token** 鉴权。

@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # HRPAuth-Backend-Go 开发文档
 
 > 当前业务 API 的权威规范源已切换到根目录 [`docs/api/`](../../../docs/api/README.md)。
