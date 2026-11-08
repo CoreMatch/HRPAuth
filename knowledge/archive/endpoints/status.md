@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 服务状态 (已弃用)
 
 > [!WARNING]

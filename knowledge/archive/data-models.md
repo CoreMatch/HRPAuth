@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 数据模型
 
 > 详细实现： [`models/models.go`](../../models/models.go)

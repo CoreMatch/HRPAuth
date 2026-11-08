@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 邮件验证码两步验证 (Email 2FA)
 
 邮件验证码作为与 TOTP 和安全密钥（WebAuthn）平级的双因素认证手段。

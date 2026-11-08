@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 用户资料管理
 
 修改用户名与 Minecraft 角色名。

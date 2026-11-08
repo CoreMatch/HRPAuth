@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 图形验证码
 
 服务端颁发的图形验证码体系，用于在 `POST /register` 提交时验证请求方不是自动化脚本。

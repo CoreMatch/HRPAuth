@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 用户安全设置 (User Security)
 
 处理已登录用户的高级安全操作，如更换邮箱。该流程已简化，仅需单一验证因子即可执行。

@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 认证模块
 
 本站业务系统的注册、登录、登出入口。涉及 **Remember Token** 的颁发与回收。

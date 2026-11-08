@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # HRPAuth 前端集成 API 文档（AI 简洁版）
 
 > 配套 HRPAuth-Web 前端项目使用。

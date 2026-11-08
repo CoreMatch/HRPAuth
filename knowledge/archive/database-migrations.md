@@ -1,3 +1,4 @@
+<!-- anchor-policy: archival -->
 # 数据库迁移与 Schema Sync
 
 本文档说明本项目当前的数据库 schema 管理方式、迁移命令，以及"空库初始化"和"已有共享库纳管"的标准流程。
