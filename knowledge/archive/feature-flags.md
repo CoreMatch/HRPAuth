@@ -6,7 +6,7 @@ Yggdrasil 协议层的功能开关，对应 `yggdrasil.feature_flags.*` 配置�
 
 | 配置项 | 默认 | 说明 |
 |--------|------|------|
-| `non_email_login` | `true` | 允许 `POST /authserver/authenticate` 凭 **Minecraft 角色名** 登录（除邮箱外）。实现见 [`../services/auth_service.go::VerifyCredentials`](../services/auth_service.go)；当 `true` 时用户可输入 `email` 或 `profiles.name`。仅影响 Yggdrasil 端点，`POST /login`（本站）仍只接受邮箱 |
+| `non_email_login` | `true` | 允许 `POST /authserver/authenticate` 凭 **Minecraft 角色名** 登录（除邮箱外）。实现见 [`services/auth_service.go::VerifyCredentials`](../../services/auth_service.go)；当 `true` 时用户可输入 `email` 或 `profiles.name`。仅影响 Yggdrasil 端点，`POST /login`（本站）仍只接受邮箱 |
 | `legacy_skin_api` | `false` | 启用旧版皮肤 API（`/skins/MinecraftSkins/...`）。新版客户端不再使用 |
 | `no_mojang_namespace` | `false` | 不使用 Mojang 命名空间。开启后角色 properties 的 namespace 不带 `minecraft:` 前缀 |
 | `enable_mojang_anti_features` | `false` | 启用 Mojang 反作弊特性。具体行为由客户端解释 |
