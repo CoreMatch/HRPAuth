@@ -79,7 +79,7 @@ baremetal:
   artifact:
     # 本阶段统一 local_path；当前可复现产物为仓库 build/ 输出（build.sh）。
     source: local_path
-    local_path: /home/lnb/Desktop/HA/HRPAuth/build/HRPAuth
+    local_path: build/HRPAuth
 
 container:
   enabled: false
