@@ -1,7 +1,7 @@
 <!-- anchor-policy: archival -->
 # 数据库迁移（AI 简洁版）
 
-> 完整开发文档（含设计决策、基线规则、增量说明）见 [`../docs/database-migrations.md`](../docs/database-migrations.md)
+> 完整开发文档（含设计决策、基线规则、增量说明）见 `../docs/database-migrations.md`
 
 ## 命令
 

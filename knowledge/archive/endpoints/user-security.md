@@ -3,7 +3,7 @@
 
 处理已登录用户的高级安全操作，如更换邮箱。该流程已简化，仅需单一验证因子即可执行。
 
-> 详细实现： [`controllers/user_security_controller.go`](../../controllers/user_security_controller.go)
+> 详细实现： `controllers/user_security_controller.go`
 
 ## 安全校验逻辑
 

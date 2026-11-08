@@ -3,7 +3,7 @@
 
 基于 [TOTP（RFC 6238）](https://datatracker.ietf.org/doc/html/rfc6238) 的两步验证，使用与 Google Authenticator / Microsoft Authenticator 兼容的 32 字节 Base32 共享密钥 + 6 位动态口令。
 
-> 详细实现： [`controllers/totp_controller.go`](../../controllers/totp_controller.go)
+> 详细实现： `controllers/totp_controller.go`
 
 ## 端点
 

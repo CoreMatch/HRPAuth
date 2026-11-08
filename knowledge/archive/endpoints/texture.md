@@ -5,7 +5,7 @@
 
 > Yggdrasil 兼容的纹理接口见 [yggdrasil.md](./yggdrasil.md)。
 
-> 详细实现： [`controllers/texture_controller.go`](../../controllers/texture_controller.go) · [`services/texture_service.go`](../../services/texture_service.go)
+> 详细实现： `controllers/texture_controller.go` · `services/texture_service.go`
 
 | 端点 | 方法 | 鉴权 |
 |------|------|------|

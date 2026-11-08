@@ -34,4 +34,4 @@ Yggdrasil 协议层的功能开关，对应 `yggdrasil.feature_flags.*` 配置�
 }
 ```
 
-> 具体回传字段取决于实现，可在 [`controllers/yggdrasil_controller.go`](../../controllers/yggdrasil_controller.go) 中查看。
+> 具体回传字段取决于实现。Yggdrasil 拆分后该逻辑位于 HRPAuth-Yggdrasil-API，见 [`controllers/yggdrasil_controller.go`](https://github.com/CoreMatch/HRPAuth-Yggdrasil-API/blob/main/controllers/yggdrasil_controller.go)。

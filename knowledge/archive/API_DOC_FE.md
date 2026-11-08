@@ -2,7 +2,7 @@
 # HRPAuth 前端集成 API 文档（AI 简洁版）
 
 > 配套 HRPAuth-Web 前端项目使用。
-> 完整规范（含状态机、实现细节、配置结构）请见 [`../docs/`](../docs/) 目录下的开发文档。
+> 完整规范（含状态机、实现细节、配置结构）请见 `../docs/` 目录下的开发文档。
 >
 > 本文档侧重"**如何调用**"，不展开内部实现。修改 API 端点时请同步更新本文件与 `../docs/`。
 
@@ -788,4 +788,4 @@ curl -X POST https://auth.example.com/texture/upload \
 - `/api/user/profile/:uuid/:textureType`
 - `/textures/:hash`（纹理公开下载）
 
-如需了解这些端点的内部行为，参见 [`../docs/endpoints/yggdrasil.md`](../docs/endpoints/yggdrasil.md)。
+如需了解这些端点的内部行为，参见 `../docs/endpoints/yggdrasil.md`。

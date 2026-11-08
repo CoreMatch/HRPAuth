@@ -1,12 +1,12 @@
 <!-- anchor-policy: archival -->
 # HRPAuth-Backend-Go 开发文档
 
-> 当前业务 API 的权威规范源已切换到根目录 [`docs/api/`](../../../docs/api/README.md)。
+> 当前业务 API 的权威规范源已切换到根目录 `docs/api/`。
 > 本目录保留模块化说明文档；当路径、响应结构、错误码发生变化时，请先更新 OpenAPI 与错误码注册表，再回填这里。
 
 本目录为面向开发人员的详细 API 文档，每个功能模块单独成文，便于按需查阅。
 
-> 配套的 **AI 简洁版**（仅说明调用方式）见 [`../references/API_DOC_FE.md`](../references/API_DOC_FE.md)。两份文档需保持同步修改。
+> 配套的 **AI 简洁版**（仅说明调用方式）见 `../references/API_DOC_FE.md`。两份文档需保持同步修改。
 
 ## 目录结构
 

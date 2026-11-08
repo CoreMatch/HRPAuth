@@ -9,7 +9,7 @@
 |------|---|
 | 方法 | `POST` |
 | 鉴权 | **无**（管理类端点；建议通过反向代理限制访问） |
-| 实现 | [`controllers/keygen_controller.go`](../../controllers/keygen_controller.go) |
+| 实现 | `controllers/keygen_controller.go` |
 
 ### 用途
 
