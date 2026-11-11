@@ -63,11 +63,11 @@ The multi-stage [Dockerfile](Dockerfile) is kept for local builds (`docker build
 
 ### Platform orchestration (Compose)
 
-HRPAuth is the core of the HA platform, but in production it runs as one service among many. The whole stack is brought up with one command from the Compose template kept in [HA-Services-Deployer/deploy/docker-compose.yml](https://github.com/CoreMatch/HA-Services-Deployer/blob/main/deploy/docker-compose.yml):
+HRPAuth is the core of the HA platform, but in production it runs as one service among many. The whole stack is brought up with one command from the Compose template kept in [HA-Cupbearer/deploy/docker-compose.yml](https://github.com/CoreMatch/HA-Cupbearer/blob/main/deploy/docker-compose.yml):
 
 ```bash
-git clone https://github.com/CoreMatch/HA-Services-Deployer.git
-cd HA-Services-Deployer/deploy
+git clone https://github.com/CoreMatch/HA-Cupbearer.git
+cd HA-Cupbearer/deploy
 cp .env.example .env   # database / Redis addresses, OAuth clients, keys, upstream URLs
 docker compose up -d --build
 ```
@@ -81,7 +81,7 @@ docker compose up -d --build
 | WinnerProxy | `ha/winnerproxy` | 2777 | Yggdrasil request routing proxy |
 | HA-WebUI-SDKHandler | `ha/ha-webui-sdkhandler` | 2704 / 2705 | WebUI SDK aggregation and compilation |
 | MatchCoreArena-Server | `ha/mca-server` | 9178 | Match core service |
-| HA-Services-Deployer | `ha/ha-services-deployer` | 18080 | Manifest-driven deployment backend |
+| HA-Cupbearer | `ha/ha-cupbearer` | 18080 | Manifest-driven deployment backend |
 | HA-Services-MaintenanceView | `ha/ha-services-maintenance-view` | 18081 | Operations interface |
 
 How the orchestration is wired:
@@ -90,12 +90,12 @@ How the orchestration is wired:
 - Each service's `config.yaml` is rendered from a template in `deploy/config/` at container startup, so database addresses, upstream URLs and secrets are all driven by `.env`.
 - Inter-service calls use container names (for example `http://hrpauth:2778`), so no fixed host addresses are baked into the images.
 - The `ha/*` image names above are the local tags this template builds; the published registry images live under `limeight/ha-*` on Docker Hub (multi-arch, referenced by pinned manifest list digests).
-- After the one-command trigger, day-to-day container lifecycle (restart policy, healthchecks) is managed by docker compose itself. HA-Services-Deployer's design intent is orchestrating microservices **without** containers — bare-metal orchestration is its main path; the container path is a one-click trigger, plus implemented container-level management capabilities (digest-priority pulls, container health probing, digest-pinned rollback) available as an option.
+- After the one-command trigger, day-to-day container lifecycle (restart policy, healthchecks) is managed by docker compose itself. HA-Cupbearer's design intent is orchestrating microservices **without** containers — bare-metal orchestration is its main path; the container path is a one-click trigger, plus implemented container-level management capabilities (digest-priority pulls, container health probing, digest-pinned rollback) available as an option.
 
 ### Deployment facts
 
 Authoritative deployment facts live in [`deploy-manifest.yaml`](deploy-manifest.yaml)
-at the repo root (consumed by HA-Services-Deployer's orchestrator;
+at the repo root (consumed by HA-Cupbearer's orchestrator;
 `manager: aapanel` means the process is panel-managed and the orchestrator
 treats it as read-only):
 
@@ -143,7 +143,7 @@ The business API contract (OpenAPI definition and error codes) is maintained in 
 **Tools & operations**
 
 - [BS2HA](https://github.com/CoreMatch/BS2HA): Offline migration tool from BlessingSkin to HRPAuth.
-- [HA-Services-Deployer](https://github.com/CoreMatch/HA-Services-Deployer): Manifest-driven deployment backend.
+- [HA-Cupbearer](https://github.com/CoreMatch/HA-Cupbearer): Manifest-driven deployment backend.
 - [HA-Services-MaintenanceView](https://github.com/CoreMatch/HA-Services-MaintenanceView): Operations interface for project setup and deployment management.
 
 **Documentation & portal**

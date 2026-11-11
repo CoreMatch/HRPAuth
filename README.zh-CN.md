@@ -63,11 +63,11 @@ go build -o HRPAuth
 
 ### 平台编排（Compose）
 
-HRPAuth 是 HA 平台的核心，但在实际部署中它只是其中一个服务。整个平台由 [HA-Services-Deployer/deploy/docker-compose.yml](https://github.com/CoreMatch/HA-Services-Deployer/blob/main/deploy/docker-compose.yml) 里的 Compose 模板一条命令拉起：
+HRPAuth 是 HA 平台的核心，但在实际部署中它只是其中一个服务。整个平台由 [HA-Cupbearer/deploy/docker-compose.yml](https://github.com/CoreMatch/HA-Cupbearer/blob/main/deploy/docker-compose.yml) 里的 Compose 模板一条命令拉起：
 
 ```bash
-git clone https://github.com/CoreMatch/HA-Services-Deployer.git
-cd HA-Services-Deployer/deploy
+git clone https://github.com/CoreMatch/HA-Cupbearer.git
+cd HA-Cupbearer/deploy
 cp .env.example .env   # 数据库 / Redis 地址、OAuth 客户端、密钥、上游 URL
 docker compose up -d --build
 ```
@@ -81,7 +81,7 @@ docker compose up -d --build
 | WinnerProxy | `ha/winnerproxy` | 2777 | Yggdrasil 请求路由代理 |
 | HA-WebUI-SDKHandler | `ha/ha-webui-sdkhandler` | 2704 / 2705 | WebUI SDK 聚合与编译 |
 | MatchCoreArena-Server | `ha/mca-server` | 9178 | 对局核心服务 |
-| HA-Services-Deployer | `ha/ha-services-deployer` | 18080 | 基于清单的部署后端 |
+| HA-Cupbearer | `ha/ha-cupbearer` | 18080 | 基于清单的部署后端 |
 | HA-Services-MaintenanceView | `ha/ha-services-maintenance-view` | 18081 | 运维操作界面 |
 
 编排的接线方式：
@@ -90,7 +90,7 @@ docker compose up -d --build
 - 每个服务的 `config.yaml` 在容器启动时由 `deploy/config/` 下的模板渲染而成，数据库地址、上游 URL 与密钥全部由 `.env` 决定。
 - 服务间调用使用容器名（例如 `http://hrpauth:2778`），镜像内不写死宿主机地址。
 - 上表的 `ha/*` 镜像名是该模板本地构建产出的标签；已发布的 registry 镜像在 Docker Hub `limeight/ha-*` 命名空间（多架构，生效引用钉 manifest list digest）。
-- 一条命令触发之后，容器的日常生命周期（重启策略、健康检查）由 docker compose 自己管理。HA-Services-Deployer 的设计意图是**在不使用容器的情况下编排微服务**——裸金属编排是主线；容器路径是一键触发，另有已实现的容器级管理能力（按 digest 拉取、容器健康探测、按 digest 钉死回滚）作为可选能力。
+- 一条命令触发之后，容器的日常生命周期（重启策略、健康检查）由 docker compose 自己管理。HA-Cupbearer 的设计意图是**在不使用容器的情况下编排微服务**——裸金属编排是主线；容器路径是一键触发，另有已实现的容器级管理能力（按 digest 拉取、容器健康探测、按 digest 钉死回滚）作为可选能力。
 
 ## 功能
 
@@ -130,7 +130,7 @@ HA 生态内的其他服务可以登记到本服务并经由其接入；机制�
 **工具与运维**
 
 - [BS2HA](https://github.com/CoreMatch/BS2HA)：BlessingSkin → HRPAuth 的离线迁移工具。
-- [HA-Services-Deployer](https://github.com/CoreMatch/HA-Services-Deployer)：manifest 驱动的服务部署后端。
+- [HA-Cupbearer](https://github.com/CoreMatch/HA-Cupbearer)：manifest 驱动的服务部署后端。
 - [HA-Services-MaintenanceView](https://github.com/CoreMatch/HA-Services-MaintenanceView)：项目初始化与部署管理的运维界面。
 
 **文档与门户**

@@ -1,5 +1,5 @@
 # HRPAuth 部署声明（deploy-manifest v1）
-# schema 依据：HA-Services-Deployer internal/manifest/（SchemaVersion=1）
+# schema 依据：HA-Cupbearer internal/manifest/（SchemaVersion=1）
 manifest_version: 1
 kind: service
 project: hrpauth
@@ -28,7 +28,7 @@ facts:
     # 部署后冒烟：真签出一个 service token，证明 OAuth2 签发链路活着
     # （不只是进程活着）。走 client_credentials 授权模式——与
     # Yggdrasil-API 等下游服务获取 service token 的路径一致
-    # （knowledge/0007）。client_id/client_secret 从 Deployer 凭据文件
+    # （knowledge/0007）。client_id/client_secret 从 Cupbearer 凭据文件
     # smoke_secrets.hrpauth_smoke_client_id / _client_secret 解析，
     # 绝不写进本清单；凭据缺失时 preflight 直接阻断并报清楚。
     # 端点事实：POST /oauth/token（main.go 路由；controllers/oauth2_controller.go
@@ -61,7 +61,7 @@ facts:
     - ./cache/verification_codes
   config:
     # controllers/startup_controller.go ConfigFileName="config.yaml"；
-    # 模板版本 = Deployer 模板（deploy/config/hrpauth.yaml.tmpl）首行
+    # 模板版本 = Cupbearer 模板（deploy/config/hrpauth.yaml.tmpl）首行
     # version: "15"（代码 config.ConfigVersion 同值；v14->v15 为 ygg
     # base_url 2779->2770 修正迁移，模板与代码已同步，无漂移）。
     - path: config.yaml
@@ -87,7 +87,7 @@ container:
   # compose 平台冒烟全过，/health 与 client_credentials 真签发均通过）。
   # 镜像为 linux/amd64 + linux/arm64 多架构 manifest list，digest 钉的是
   # manifest list 摘要（非单平台子摘要），为生效引用，tag 仅可读别名。
-  # 部署时 Deployer 按 digest 优先真实拉取本镜像（鉴权沿用宿主 docker 登录态；拉后摘要对照不符即响亮失败）。
+  # 部署时 Cupbearer 按 digest 优先真实拉取本镜像（鉴权沿用宿主 docker 登录态；拉后摘要对照不符即响亮失败）。
   image:
     source: registry
     repo: limeight/ha-hrpauth
