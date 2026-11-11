@@ -41,9 +41,9 @@ go build -o HRPAuth
 然后重启。
 
 - 完整配置参考（schema 版本、全部字段、默认值）：
-  [SamuelWiki — HRPAuth 配置与接口](https://wiki.mcnb.dev/zh/projects/hrpauth/configuration)
+  [HRPAuth-Wiki — HRPAuth 配置](https://wiki.mcnb.dev/deploy/hrpauth)
 - 数据库迁移（命令、baseline 布局、规则）：
-  [SamuelWiki — HRPAuth 数据库迁移](https://wiki.mcnb.dev/zh/projects/hrpauth/database-migrations)
+  [HRPAuth-Wiki — HRPAuth 数据形态与迁移](https://wiki.mcnb.dev/dev/hrpauth)
 
 ## 部署
 

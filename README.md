@@ -41,9 +41,9 @@ least `database`, `redis`, `smtp`, `server.port`, `callback.url` and
 `frontend.url` before production use, then restart.
 
 - Complete configuration reference (schema versions, all fields, defaults):
-  [SamuelWiki — HRPAuth Configuration & API](https://wiki.mcnb.dev/projects/hrpauth/configuration)
+  [HRPAuth-Wiki — HRPAuth configuration](https://wiki.mcnb.dev/deploy/hrpauth)
 - Database migrations (commands, baseline layout, rules):
-  [SamuelWiki — HRPAuth Database Migrations](https://wiki.mcnb.dev/projects/hrpauth/database-migrations)
+  [HRPAuth-Wiki — HRPAuth data & migrations](https://wiki.mcnb.dev/dev/hrpauth)
 
 ## Deployment
 
