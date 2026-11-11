@@ -50,7 +50,7 @@ database_not_ready` instead of failing.
   `Dockerfile:L23-L24 fp=32607912` (entrypoint/cmd); introduced by `7c391d8`.
 - Config rendering for compose: `docker-entrypoint.sh::envsubst` (`envsubst`
   when `CONFIG_TEMPLATE`/`RENDERED_CONFIG` set); compose orchestration
-  described in `README.md:L64-L94 fp=1742e70c ~ Platform orchestration (Compose)`.
+  described in `README.md:L64-L94 fp=004a929c ~ Platform orchestration (Compose)`.
 - Startup flow: `main.go::main`, `main.go::main` (config load + async DB
   init), `main.go::RegisterOnConnect` (OnConnect callback), `main.go::main`
   (redis), `main.go::main` (`r.Run`).
