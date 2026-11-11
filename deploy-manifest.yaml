@@ -91,5 +91,5 @@ container:
   image:
     source: registry
     repo: limeight/ha-hrpauth
-    tag: "62526-53952d2"
-    digest: "sha256:b279c9a020b89ec834437387b506ec3c0743675754538784207cc0ea86e36695"
+    tag: "62526-7aa7716"
+    digest: "sha256:7aeb4bacb81ef45098ae167d47d7868eae67e36a0086e8bfed7e19a4bfa45288"
