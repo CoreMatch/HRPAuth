@@ -83,3 +83,12 @@ baremetal:
 
 container:
   enabled: false
+  # 容器形态镜像：已真实发布（Docker Hub，build → push → 回拉 → 挂回
+  # compose 平台冒烟全过，/health 与 client_credentials 真签发均通过）。
+  # digest 为生效引用，tag 仅可读别名。
+  # 注：Deployer 运行时的 registry 鉴权拉取本阶段未实现，此段为部署声明。
+  image:
+    source: registry
+    repo: limeight/ha-hrpauth
+    tag: "62526-dab3771"
+    digest: "sha256:0af7ba452443609162494a0d686dc8e589a48e403062259838faf132e1039039"
