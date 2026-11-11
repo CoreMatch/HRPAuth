@@ -44,13 +44,13 @@ database_not_ready` instead of failing.
 - Single binary: `README.md:L50-L56 fp=ff8dc18b ~ Single binary` ("Single binary" + `build.sh`); prebuilt
   binaries present under `build/` (working tree only — `build/*` ignored per
   `.gitignore:L3 fp=01abafe3`); `README.zh-CN.md:L50-L50 fp=dde0b9bc ~ 单二进制`.
-- Container image: `Dockerfile:L2-L10 fp=a238b37a` (builder `golang:${GO_VERSION}-alpine`,
+- Container image: `Dockerfile:L2-L10 fp=b4aa0ebb` (builder `golang:${GO_VERSION}-alpine`,
   static build), `Dockerfile:L12-L14 fp=be571ff4` + `Dockerfile:L22 fp=41c56520` (runtime
   `alpine:3.22`, non-root uid 10001), `Dockerfile:L21 fp=35a5e0c2` (`EXPOSE 2778`),
   `Dockerfile:L23-L24 fp=32607912` (entrypoint/cmd); introduced by `7c391d8`.
 - Config rendering for compose: `docker-entrypoint.sh::envsubst` (`envsubst`
   when `CONFIG_TEMPLATE`/`RENDERED_CONFIG` set); compose orchestration
-  described in `README.md:L68-L95 fp=e633bca3 ~ Platform orchestration (Compose)`.
+  described in `README.md:L64-L94 fp=1742e70c ~ Platform orchestration (Compose)`.
 - Startup flow: `main.go::main`, `main.go::main` (config load + async DB
   init), `main.go::RegisterOnConnect` (OnConnect callback), `main.go::main`
   (redis), `main.go::main` (`r.Run`).
