@@ -74,7 +74,7 @@ Table name: `profiles`
   - Service proxy registration (`POST /internal/proxy-register`, HRPAuth-Yggdrasil-API):
     - Hit existing account (idempotent by `mojang_uuid` / `mbe=1` bind) → **do not change** `cbh` (keep original value).
     - New account with `mojang_uuid` provided → `0` (proxy registration).
-- **Cleanup Basis**: Users with `cbh=0` and both `register_at` / `last_sign_at` exceeding 30 days are deleted by `BotUserCleanupController` (see `references/HA-ROADMAP.md` §4).
+- **Cleanup Basis**: Users with `cbh=0` and both `register_at` / `last_sign_at` exceeding 30 days are deleted by `BotUserCleanupController`, which lives in HRPAuth-Yggdrasil-API (`controllers/bot_user_cleanup_controller.go`, daily run) since the game-side tables moved out with the Minecraft stack (ADR-0001 split).
 - **Claiming Mechanism**:
   - Via WebUI / MBE: whether `cbh` flips to 1 when a proxy-registered user subsequently registers and binds via WebUI is decided by the business layer; the current implementation keeps the original value.
   - Via operator endpoint `POST /admin/claim-user`: when an operator assigns credentials to a `cbh=0` user, the handler **flips `cbh` to 1** as part of the same transaction, removing the user from the bot-user cleanup eligibility. See "Operator Claiming" below.
