@@ -113,6 +113,40 @@ func (ac *AuthController) VerifyCredentials(c *gin.Context) {
 	c.JSON(http.StatusOK, userInfo)
 }
 
+// UserExists handles POST /internal/user-exists. It reports whether a core
+// user with the given email exists. Ops-level (service-token) auth only; it
+// lets a satellite service gate outbound mail on real accounts — e.g. the
+// HASkinProxy password-reset flow — without exposing an email-enumeration
+// surface to end users (the public forgot-password endpoint always answers
+// success instead). Idempotent read.
+func (ac *AuthController) UserExists(c *gin.Context) {
+	if !RequireAuthLevel(c, SecurityLevelOps) {
+		return
+	}
+
+	var req struct {
+		Email string `json:"email"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respondError(c, http.StatusBadRequest, CodeInvalidJSONBody, "Invalid request body")
+		return
+	}
+
+	email := strings.ToLower(strings.TrimSpace(req.Email))
+	if !emailRegex.MatchString(email) {
+		respondError(c, http.StatusBadRequest, CodeInvalidEmail, "Invalid email format")
+		return
+	}
+
+	var count int64
+	if err := database.DB.Model(&models.User{}).Where("email = ?", email).Count(&count).Error; err != nil {
+		respondError(c, http.StatusInternalServerError, CodeInternalError, "Database error")
+		return
+	}
+
+	respondOK(c, "user existence checked", gin.H{"exists": count > 0})
+}
+
 // ClaimUserInternal handles POST /internal/claim-user. It provisions the core
 // user for a proxy-registered game account that is being claimed through
 // HRPAuth-Yggdrasil-API (POST /admin/claim-user): the caller (a satellite
