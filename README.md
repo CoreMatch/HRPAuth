@@ -57,17 +57,13 @@ Pre-built binaries for six platforms are kept under [`build/`](build): darwin / 
 
 ### Container image
 
-A multi-stage [Dockerfile](Dockerfile) is provided:
+The image is published on Docker Hub: [`limeight/ha-hrpauth`](https://hub.docker.com/r/limeight/ha-hrpauth) — a `linux/amd64` + `linux/arm64` multi-arch image (manifest list); tags follow `<version>-<short SHA>` alongside `latest`, and the effective reference is pinned by the manifest list digest recorded in [`deploy-manifest.yaml`](deploy-manifest.yaml). The image runs the same binary as a non-root user and exposes port `2778`. The [entrypoint](docker-entrypoint.sh) can render a configuration template from environment variables before startup (`CONFIG_TEMPLATE` / `RENDERED_CONFIG`).
 
-```bash
-docker build -t hrpauth .
-```
-
-The image runs the same binary as a non-root user and exposes port `2778`. The [entrypoint](docker-entrypoint.sh) can render a configuration template from environment variables before startup (`CONFIG_TEMPLATE` / `RENDERED_CONFIG`).
+The multi-stage [Dockerfile](Dockerfile) is kept for local builds (`docker build -t hrpauth .`); deployment references should use the published image.
 
 ### Platform orchestration (Compose)
 
-HRPAuth is the core of the HA platform, but in production it runs as one service among many. The whole stack is orchestrated by a Compose template kept in [HA-Services-Deployer/deploy/docker-compose.yml](https://github.com/CoreMatch/HA-Services-Deployer/blob/main/deploy/docker-compose.yml), which builds every service image and wires them together:
+HRPAuth is the core of the HA platform, but in production it runs as one service among many. The whole stack is brought up with one command from the Compose template kept in [HA-Services-Deployer/deploy/docker-compose.yml](https://github.com/CoreMatch/HA-Services-Deployer/blob/main/deploy/docker-compose.yml):
 
 ```bash
 git clone https://github.com/CoreMatch/HA-Services-Deployer.git
@@ -93,6 +89,8 @@ How the orchestration is wired:
 - MySQL and Redis are **not** started by the stack; the services reach external instances through the `DB_*` / `REDIS_*` variables in `.env`.
 - Each service's `config.yaml` is rendered from a template in `deploy/config/` at container startup, so database addresses, upstream URLs and secrets are all driven by `.env`.
 - Inter-service calls use container names (for example `http://hrpauth:2778`), so no fixed host addresses are baked into the images.
+- The `ha/*` image names above are the local tags this template builds; the published registry images live under `limeight/ha-*` on Docker Hub (multi-arch, referenced by pinned manifest list digests).
+- After the one-command trigger, day-to-day container lifecycle (restart policy, healthchecks) is managed by docker compose itself. HA-Services-Deployer's design intent is orchestrating microservices **without** containers — bare-metal orchestration is its main path; the container path is a one-click trigger, plus implemented container-level management capabilities (digest-priority pulls, container health probing, digest-pinned rollback) available as an option.
 
 ### Deployment facts
 

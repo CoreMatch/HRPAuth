@@ -57,17 +57,13 @@ go build -o HRPAuth
 
 ### 容器镜像
 
-仓库提供了多阶段构建的 [Dockerfile](Dockerfile)：
+镜像已发布到 Docker Hub：[`limeight/ha-hrpauth`](https://hub.docker.com/r/limeight/ha-hrpauth)——`linux/amd64` + `linux/arm64` 多架构镜像（manifest list）；tag 为 `<版本>-<短SHA>`，并列 `latest`，生效引用以 [`deploy-manifest.yaml`](deploy-manifest.yaml) 登记的 manifest list digest 为准。镜像以非 root 用户运行同一二进制，暴露端口 `2778`。[入口脚本](docker-entrypoint.sh)可在启动前用环境变量渲染配置模板（`CONFIG_TEMPLATE` / `RENDERED_CONFIG`）。
 
-```bash
-docker build -t hrpauth .
-```
-
-镜像以非 root 用户运行同一二进制，暴露端口 `2778`。[入口脚本](docker-entrypoint.sh)可在启动前用环境变量渲染配置模板（`CONFIG_TEMPLATE` / `RENDERED_CONFIG`）。
+多阶段 [Dockerfile](Dockerfile) 保留用于本地构建（`docker build -t hrpauth .`）；部署引用以已发布镜像为准。
 
 ### 平台编排（Compose）
 
-HRPAuth 是 HA 平台的核心，但在实际部署中它只是其中一个服务。整个平台由 [HA-Services-Deployer/deploy/docker-compose.yml](https://github.com/CoreMatch/HA-Services-Deployer/blob/main/deploy/docker-compose.yml) 里的 Compose 模板统一编排，它会构建全部服务镜像并把它们组装起来：
+HRPAuth 是 HA 平台的核心，但在实际部署中它只是其中一个服务。整个平台由 [HA-Services-Deployer/deploy/docker-compose.yml](https://github.com/CoreMatch/HA-Services-Deployer/blob/main/deploy/docker-compose.yml) 里的 Compose 模板一条命令拉起：
 
 ```bash
 git clone https://github.com/CoreMatch/HA-Services-Deployer.git
@@ -93,6 +89,8 @@ docker compose up -d --build
 - MySQL 与 Redis **不在**编排内启动，各服务通过 `.env` 中的 `DB_*` / `REDIS_*` 变量连接外部实例。
 - 每个服务的 `config.yaml` 在容器启动时由 `deploy/config/` 下的模板渲染而成，数据库地址、上游 URL 与密钥全部由 `.env` 决定。
 - 服务间调用使用容器名（例如 `http://hrpauth:2778`），镜像内不写死宿主机地址。
+- 上表的 `ha/*` 镜像名是该模板本地构建产出的标签；已发布的 registry 镜像在 Docker Hub `limeight/ha-*` 命名空间（多架构，生效引用钉 manifest list digest）。
+- 一条命令触发之后，容器的日常生命周期（重启策略、健康检查）由 docker compose 自己管理。HA-Services-Deployer 的设计意图是**在不使用容器的情况下编排微服务**——裸金属编排是主线；容器路径是一键触发，另有已实现的容器级管理能力（按 digest 拉取、容器健康探测、按 digest 钉死回滚）作为可选能力。
 
 ## 功能
 
