@@ -230,7 +230,7 @@ UPDATE oauth2_refresh_tokens
 
 Per the authlib-injector wiki (§令牌): *"a user can have multiple tokens simultaneously, but the server should also limit the number of tokens. When the token count exceeds the limit (e.g. 10), the oldest token should be revoked before the new one is issued."*
 
-This is enforced in [`/home/lnb/Desktop/HA/HRPAuth-Yggdrasil-API/services/auth_service.go::EnforceTokenLimit`](https://github.com/CoreMatch/HRPAuth-Yggdrasil-API/blob/main/services/auth_service.go), called immediately before `CreateToken` in both `/authenticate` and `/refresh`.
+This is enforced in [`/home/lnb/Desktop/HA/hrpauth/HRPAuth-Yggdrasil-API/services/auth_service.go::EnforceTokenLimit`](https://github.com/CoreMatch/HRPAuth-Yggdrasil-API/blob/main/services/auth_service.go), called immediately before `CreateToken` in both `/authenticate` and `/refresh`.
 
 ### Algorithm
 
