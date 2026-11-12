@@ -82,7 +82,7 @@ docker compose up -d --build
 | HA-WebUI-SDKHandler | `ha/ha-webui-sdkhandler` | 2704 / 2705 | WebUI SDK 聚合与编译 |
 | MatchCoreArena-Server | `ha/mca-server` | 9178 | 对局核心服务 |
 | HA-Cupbearer | `ha/ha-cupbearer` | 18080 | 基于清单的部署后端 |
-| HA-Services-MaintenanceView | `ha/ha-services-maintenance-view` | 18081 | 运维操作界面 |
+| HA-Services-MaintenanceView | `ha/ha-services-maintenance-view` | 2771 | 运维操作界面 |
 
 编排的接线方式：
 

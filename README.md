@@ -82,7 +82,7 @@ docker compose up -d --build
 | HA-WebUI-SDKHandler | `ha/ha-webui-sdkhandler` | 2704 / 2705 | WebUI SDK aggregation and compilation |
 | MatchCoreArena-Server | `ha/mca-server` | 9178 | Match core service |
 | HA-Cupbearer | `ha/ha-cupbearer` | 18080 | Manifest-driven deployment backend |
-| HA-Services-MaintenanceView | `ha/ha-services-maintenance-view` | 18081 | Operations interface |
+| HA-Services-MaintenanceView | `ha/ha-services-maintenance-view` | 2771 | Operations interface |
 
 How the orchestration is wired:
 
