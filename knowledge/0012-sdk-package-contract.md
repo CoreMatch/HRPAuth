@@ -115,6 +115,15 @@ example-service-sdk.tar.gz
       "priority": 100
     }
   ],
+  "contributions": [
+    {
+      "id": "github",
+      "surface": "register.providers",
+      "module": "src/register/GitHubProviderButton",
+      "label": "GitHub",
+      "priority": 100
+    }
+  ],
   "dependencies": {
     "some-lib": "^1.0.0"
   },
@@ -129,7 +138,7 @@ example-service-sdk.tar.gz
 | `schema_version` | int | yes | Manifest schema version. Currently `1`. |
 | `name` | string | yes | Unique service name. `[a-z0-9]([a-z0-9-]*[a-z0-9])?`, max 64 chars. Uniquely identifies the package on Armorial. |
 | `version` | string | yes | Semantic version (`major.minor.patch`). |
-| `routes` | array | yes | Non-empty list of route entries (see below). Armorial core upload validation rejects every package whose `routes` is missing or empty, regardless of any `profile_cards`. |
+| `routes` | array | no | Route entries. A package MUST declare at least one of `routes`, `profile_cards`, or `contributions`. |
 | `routes[].path` | string | yes | Route path, MUST start with `/`, MUST NOT end with `/` (except root `/`), MUST NOT contain `?`/`#`/`..` segments. Becomes a React Router path. |
 | `routes[].module` | string | yes | Relative path to a TS/TSX module inside the package (extension optional). The module MUST have a **default export** React component (used with `React.lazy`). MUST be inside the package (no `..`, no absolute path). |
 | `routes[].title` | string | no | Optional document title hint. |
@@ -146,6 +155,12 @@ example-service-sdk.tar.gz
 | `profile_cards[].title` | string | yes* | Card title rendered by the host Profile page. |
 | `profile_cards[].module` | string | yes* | Relative path to a TS/TSX module inside the package (extension optional). The module MUST have a **default export** React component, and is rendered as the card body inside the host-provided card shell. MUST be inside the package (no `..`, no absolute path). |
 | `profile_cards[].priority` | int | no | Optional explicit display priority. Higher numbers render closer to the top. When omitted, the card falls back to SDK aggregation/load order. |
+| `contributions` | array | no | Generic UI contributions registered by surface. A package MAY be contribution-only. |
+| `contributions[].id` | string | yes* | Stable contribution identifier. Must match `[a-z0-9]([a-z0-9-]*[a-z0-9])?`, max 64 chars, unique within the package. |
+| `contributions[].surface` | string | yes* | Host extension surface. Currently `register.providers` is supported. |
+| `contributions[].module` | string | yes* | Relative path to a TS/TSX module inside the package (extension optional). The module MUST have a default export React component. |
+| `contributions[].label` | string | yes* | Human-readable label for diagnostics and accessibility. |
+| `contributions[].priority` | int | no | Optional display priority. Higher values render first; ties keep SDK aggregation order. |
 | `dependencies` | object | no | npm dependencies to merge into the generated frontend `package.json`. Keys are package names, values are npm version ranges. |
 | `run_scripts` | bool | no | Accepted in the manifest and carried through the handler's option plumbing, but the current build pipeline does not read it: dependency installation happens once at template setup (see Build Policy), and per-package script control is not applied. The handler does enforce a configured npm blacklist. |
 
@@ -153,8 +168,9 @@ example-service-sdk.tar.gz
 > **routes declared by the same service**. Cross-service references are not
 > allowed.
 
-> `profile_cards` entries do not need a matching route entry of their own, but
-> the package must still declare a non-empty `routes` array (see above).
+> `profile_cards` and `contributions` entries do not need matching route
+> entries, but the package must still declare at least one of `routes`,
+> `profile_cards`, or `contributions`.
 
 ### Profile Card Priority Contract
 
@@ -171,6 +187,17 @@ example-service-sdk.tar.gz
   2. cards without `priority`, sorted by SDK aggregation/load order
   3. ties keep stable SDK aggregation/load order
 
+### Contribution Surface Contract
+
+- `register.providers` contributions render above the standard registration
+  form. The default-exported component owns its button/link UI and interaction.
+- The host lazy-loads each component, sorts explicit priorities before
+  unspecified priorities, and isolates render failures per contribution.
+- Adding another registration provider requires only another contribution in
+  an SDK manifest; it does not require a new host slot.
+- New surface names require a host renderer and matching validation updates in
+  both Armorial and the SDK handler.
+
 ### Conflict Policy
 
 - A package is uniquely identified by `name`.
@@ -186,11 +213,12 @@ example-service-sdk.tar.gz
 3. `manifest.json` must parse and satisfy the schema above.
 4. All file paths must be relative, inside the package, free of `..` and
    absolute segments; no symlinks/hard links.
-5. At least one of `routes` / `profile_cards` must be non-empty.
+5. At least one of `routes` / `profile_cards` / `contributions` must be non-empty.
 6. `menu.path`, `dashboard.path`, and `critical_operations.path` must reference a route in the same package.
-7. `routes[].module` and `profile_cards[].module` must resolve inside the package.
-8. Package size must not exceed `max_package_size`.
-9. Duplicate `name` → `409 sdk_package_conflict`.
+7. `routes[].module`, `profile_cards[].module`, and `contributions[].module` must resolve inside the package.
+8. `contributions[].id` must be unique within the package and `contributions[].surface` must be supported by the host.
+9. Package size must not exceed `max_package_size`.
+10. Duplicate `name` → `409 sdk_package_conflict`.
 
 ## Generated Frontend Contract (HA-WebUI-SDKHandler)
 
@@ -205,6 +233,7 @@ The handler produces the following generated modules under
 | `sdk-dashboard.tsx` | `sdkDashboardItems: SdkDashboardItem[]` | `Dashboard.tsx` |
 | `sdk-critical-operations.ts` | `sdkCriticalOperations: SdkCriticalOperationItem[]` | `AccountSecurity.tsx` |
 | `sdk-profile-cards.tsx` | `sdkProfileCards: SdkProfileCardItem[]` | `Profile.tsx` |
+| `sdk-contributions.tsx` | `sdkContributions: SdkContributionItem[]`, `sdkContributionsForSurface(surface)` | `SdkContributions.tsx` |
 
 During injection the handler also rewrites cross-package relative imports:
 when an SDK source file imports a module that lies outside its own package
@@ -222,6 +251,7 @@ export interface SdkManifestEntry {
   menu?: { label: string; path: string }[];
   dashboard?: { label: string; path: string }[];
   profileCards?: { title: string; module: string; priority?: number }[];
+  contributions?: SdkContributionEntry[];
   runScripts: boolean;
   sha256: string;
 }
@@ -250,6 +280,25 @@ export interface SdkProfileCardItem {
   priority?: number;
   loadOrder: number; // stable aggregation order from SDK handler
   element: React.ReactNode; // lazy component rendering card body
+}
+
+export interface SdkContributionEntry {
+  id: string;
+  surface: string;
+  module: string;
+  label?: string;
+  priority?: number;
+}
+
+export interface SdkContributionItem {
+  key: string;
+  service: string;
+  id: string;
+  surface: string;
+  label?: string;
+  priority?: number;
+  loadOrder: number;
+  element: React.ReactNode;
 }
 ```
 

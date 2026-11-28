@@ -29,6 +29,7 @@ type SdkPackageMeta struct {
 	Menu               []SdkMenuMeta              `json:"menu,omitempty"`
 	Dashboard          []SdkDashboardMeta         `json:"dashboard,omitempty"`
 	CriticalOperations []SdkCriticalOperationMeta `json:"critical_operations,omitempty"`
+	Contributions      []SdkContributionMeta      `json:"contributions,omitempty"`
 	Dependencies       map[string]string          `json:"dependencies,omitempty"`
 	RunScripts         bool                       `json:"run_scripts"`
 	ManifestJSON       map[string]interface{}     `json:"-"`
@@ -57,6 +58,14 @@ type SdkDashboardMeta struct {
 type SdkCriticalOperationMeta struct {
 	Label string `json:"label"`
 	Path  string `json:"path"`
+}
+
+type SdkContributionMeta struct {
+	ID       string `json:"id"`
+	Surface  string `json:"surface"`
+	Module   string `json:"module"`
+	Label    string `json:"label,omitempty"`
+	Priority *int   `json:"priority,omitempty"`
 }
 
 // metaFileName 是每个包目录内的元信息文件。
@@ -286,6 +295,19 @@ func buildMeta(name string, data []byte, manifest map[string]interface{}, digest
 			})
 		}
 	}
+	if contributions, ok := manifest["contributions"].([]interface{}); ok {
+		for _, item := range contributions {
+			if entry, ok := item.(map[string]interface{}); ok {
+				meta.Contributions = append(meta.Contributions, SdkContributionMeta{
+					ID:       strFromMap(entry, "id"),
+					Surface:  strFromMap(entry, "surface"),
+					Module:   strFromMap(entry, "module"),
+					Label:    strFromMap(entry, "label"),
+					Priority: intPtrFromMap(entry, "priority"),
+				})
+			}
+		}
+	}
 	return meta
 }
 
@@ -411,6 +433,15 @@ func boolFromMap(m map[string]interface{}, key string) bool {
 		return v
 	}
 	return false
+}
+
+func intPtrFromMap(m map[string]interface{}, key string) *int {
+	v, ok := m[key].(float64)
+	if !ok || v != float64(int(v)) {
+		return nil
+	}
+	value := int(v)
+	return &value
 }
 
 func mapStringFromMap(m map[string]interface{}, key string) map[string]string {

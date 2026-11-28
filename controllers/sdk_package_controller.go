@@ -200,6 +200,9 @@ func publicMeta(meta *SdkPackageMeta) gin.H {
 	if len(meta.CriticalOperations) > 0 {
 		h["critical_operations"] = meta.CriticalOperations
 	}
+	if len(meta.Contributions) > 0 {
+		h["contributions"] = meta.Contributions
+	}
 	if len(meta.Dependencies) > 0 {
 		h["dependencies"] = meta.Dependencies
 	}
@@ -412,9 +415,18 @@ func validateManifest(m map[string]interface{}) error {
 		return fmt.Errorf("manifest version must be semantic (major.minor.patch)")
 	}
 
-	routes, ok := m["routes"].([]interface{})
-	if !ok || len(routes) == 0 {
-		return fmt.Errorf("manifest routes must be a non-empty array")
+	routes, hasRoutes := m["routes"].([]interface{})
+	if m["routes"] != nil && !hasRoutes {
+		return fmt.Errorf("manifest routes must be an array")
+	}
+	if err := validateContributions(m["contributions"]); err != nil {
+		return err
+	}
+	if err := validateProfileCards(m["profile_cards"]); err != nil {
+		return err
+	}
+	if len(routes) == 0 && !hasNonEmptyManifestEntries(m["profile_cards"]) && !hasNonEmptyManifestEntries(m["contributions"]) {
+		return fmt.Errorf("manifest routes, profile_cards or contributions must be non-empty")
 	}
 	seenPaths := map[string]bool{}
 	for _, r := range routes {
@@ -483,6 +495,114 @@ func validateManifest(m map[string]interface{}) error {
 		}
 	}
 	return nil
+}
+
+func validateProfileCards(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+	var entries []interface{}
+	switch cards := value.(type) {
+	case []interface{}:
+		entries = cards
+	case map[string]interface{}:
+		entries = []interface{}{cards}
+	default:
+		return fmt.Errorf("manifest profile_cards must be an object or an array of objects")
+	}
+	for i, entry := range entries {
+		item, ok := entry.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("manifest profile_cards[%d] must be an object", i)
+		}
+		if strings.TrimSpace(strFromMap(item, "title")) == "" {
+			return fmt.Errorf("manifest profile_cards[%d].title is required", i)
+		}
+		module := strings.TrimSpace(strFromMap(item, "module"))
+		if !validModulePath(module) {
+			return fmt.Errorf("manifest profile_cards[%d].module %q invalid: must be a relative in-package path", i, module)
+		}
+		if priority, exists := item["priority"]; exists {
+			number, ok := priority.(float64)
+			if !ok || number != float64(int(number)) {
+				return fmt.Errorf("manifest profile_cards[%d].priority must be an integer", i)
+			}
+		}
+	}
+	return nil
+}
+
+func validateContributions(value interface{}) error {
+	if value == nil {
+		return nil
+	}
+	entries, ok := value.([]interface{})
+	if !ok {
+		return fmt.Errorf("manifest contributions must be an array of objects")
+	}
+	seenIDs := map[string]bool{}
+	for i, entry := range entries {
+		item, ok := entry.(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("manifest contributions[%d] must be an object", i)
+		}
+		id := strings.TrimSpace(strFromMap(item, "id"))
+		if !validContributionID(id) {
+			return fmt.Errorf("manifest contributions[%d].id invalid: must match [a-z0-9]([a-z0-9-]*[a-z0-9])? and be at most 64 chars", i)
+		}
+		if seenIDs[id] {
+			return fmt.Errorf("manifest contributions[%d].id %q duplicated", i, id)
+		}
+		seenIDs[id] = true
+		surface := strings.TrimSpace(strFromMap(item, "surface"))
+		if surface != "register.providers" {
+			return fmt.Errorf("manifest contributions[%d].surface %q is not supported", i, surface)
+		}
+		if strings.TrimSpace(strFromMap(item, "label")) == "" {
+			return fmt.Errorf("manifest contributions[%d].label is required", i)
+		}
+		module := strings.TrimSpace(strFromMap(item, "module"))
+		if !validModulePath(module) {
+			return fmt.Errorf("manifest contributions[%d].module %q invalid: must be a relative in-package path", i, module)
+		}
+		if priority, exists := item["priority"]; exists {
+			number, ok := priority.(float64)
+			if !ok || number != float64(int(number)) {
+				return fmt.Errorf("manifest contributions[%d].priority must be an integer", i)
+			}
+		}
+	}
+	return nil
+}
+
+func validContributionID(id string) bool {
+	if id == "" || len(id) > 64 {
+		return false
+	}
+	for i, r := range id {
+		if r >= 'a' && r <= 'z' {
+			continue
+		}
+		if r >= '0' && r <= '9' {
+			continue
+		}
+		if r == '-' && i > 0 && i < len(id)-1 {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func hasNonEmptyManifestEntries(value interface{}) bool {
+	switch entries := value.(type) {
+	case []interface{}:
+		return len(entries) > 0
+	case map[string]interface{}:
+		return true
+	default:
+		return false
+	}
 }
 
 func validateCriticalOperations(value interface{}, routePaths map[string]bool) error {
